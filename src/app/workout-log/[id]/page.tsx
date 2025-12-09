@@ -110,7 +110,7 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
           const workoutData = workoutSnap.data() as WorkoutLog;
           
           if (workoutData.exercises && workoutData.exercises.length > 0) {
-             setWorkout({ id: workoutSnap.id, ...workoutData });
+             setWorkout({ ...workoutData, id: workoutSnap.id });
           } else {
              await initializeExercises(workoutDocRef, workoutData.routineId, workoutData);
           }

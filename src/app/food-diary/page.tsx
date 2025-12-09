@@ -141,7 +141,7 @@ export default function FoodDiaryPage() {
     const unsubscribe = onSnapshot(foodDiaryRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data() as FoodDiary;
-        setFoodDiary({ id: snapshot.id, ...data });
+        setFoodDiary({ ...data, id: snapshot.id });
       } else {
         // Initialize empty food diary
         setFoodDiary({
@@ -803,6 +803,10 @@ export default function FoodDiaryPage() {
           
           if (apiFood) {
             // Found in API, automatically save to database
+            if (!user) {
+              toast.error("User not authenticated");
+              return;
+            }
             try {
               const protein = apiFood.proteinPer100g || 0;
               const carbs = apiFood.carbPer100g || 0;
@@ -1222,7 +1226,7 @@ export default function FoodDiaryPage() {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ name, calories }) => `${name}: ${Math.ceil(calories)} cal`}
+                      label={(entry: any) => `${entry.name}: ${Math.ceil(entry.calories)} cal`}
                       outerRadius={70}
                       fill="#8884d8"
                       dataKey="calories"

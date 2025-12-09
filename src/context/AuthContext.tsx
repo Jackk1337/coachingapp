@@ -53,6 +53,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Only run on client-side
+    if (typeof window === 'undefined') {
+      setLoading(false);
+      return;
+    }
+
+    // Check if auth is properly initialized (has the onAuthStateChanged method)
+    // During build, auth might be initialized with dummy config, but onAuthStateChanged should still exist
+    if (!auth || typeof (auth as any).onAuthStateChanged !== 'function') {
+      console.error('Firebase auth not properly initialized. Check your environment variables.');
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       
@@ -85,6 +99,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const signInWithGoogle = async () => {
+    if (!auth || !googleProvider) {
+      console.error("Firebase not initialized");
+      return;
+    }
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
@@ -93,6 +111,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const signOut = async () => {
+    if (!auth) {
+      console.error("Firebase not initialized");
+      return;
+    }
     try {
       await firebaseSignOut(auth);
     } catch (error) {
@@ -101,7 +123,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const updateProfile = async (data: Partial<UserProfile>) => {
-    if (!user) return;
+    if (!user || !db) return;
     const userRef = doc(db, "users", user.uid);
     await setDoc(userRef, data, { merge: true });
     setProfile((prev) => (prev ? { ...prev, ...data } : null));

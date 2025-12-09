@@ -1,65 +1,111 @@
-import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, Auth } from "firebase/auth";
-import { getFirestore, Firestore } from "firebase/firestore";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 
-// Validate Firebase configuration
-const getFirebaseConfig = () => {
-  const config = {
-    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  };
-
-  // Only validate in client-side or if all values are present
-  if (typeof window !== 'undefined' || Object.values(config).every(val => val)) {
-    return config;
-  }
-
-  // Return a dummy config during build if env vars are missing
-  // This prevents build errors, but the app won't work until env vars are set
-  return {
-    apiKey: 'dummy-key',
-    authDomain: 'dummy.firebaseapp.com',
-    projectId: 'dummy-project',
-    storageBucket: 'dummy-project.appspot.com',
-    messagingSenderId: '123456789',
-    appId: '1:123456789:web:dummy',
-  };
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Initialize Firebase only if not already initialized
-let app: FirebaseApp;
-let auth: Auth;
-let db: Firestore;
+// Initialize Firebase
+// Always initialize to ensure types are correct, using dummy config during build if needed
+let app: ReturnType<typeof initializeApp>;
+let auth: ReturnType<typeof getAuth>;
+let db: ReturnType<typeof getFirestore>;
 let googleProvider: GoogleAuthProvider;
 
-try {
-  const firebaseConfig = getFirebaseConfig();
+const initializeFirebase = () => {
+  // Check if we have valid config (not undefined and not dummy)
+  const hasValidConfig = firebaseConfig.apiKey && 
+                         firebaseConfig.apiKey !== 'dummy-key-for-build' &&
+                         firebaseConfig.projectId && 
+                         firebaseConfig.projectId !== 'dummy-project' &&
+                         firebaseConfig.appId &&
+                         firebaseConfig.appId !== '1:123456789:web:dummy';
   
-  // Only initialize if we have valid config or we're in the browser
-  if (typeof window !== 'undefined' || firebaseConfig.apiKey !== 'dummy-key') {
-    app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+  if (hasValidConfig) {
+    // Valid config - initialize normally
+    if (!getApps().length) {
+      app = initializeApp(firebaseConfig);
+    } else {
+      app = getApp();
+    }
     auth = getAuth(app);
     db = getFirestore(app);
     googleProvider = new GoogleAuthProvider();
   } else {
-    // During build with missing env vars, create dummy instances
-    // These will be replaced when the app runs with proper env vars
-    app = {} as FirebaseApp;
-    auth = {} as Auth;
-    db = {} as Firestore;
-    googleProvider = new GoogleAuthProvider();
+    // Missing or dummy config
+    const dummyConfig = {
+      apiKey: 'dummy-key-for-build',
+      authDomain: 'dummy.firebaseapp.com',
+      projectId: 'dummy-project',
+      storageBucket: 'dummy-project.appspot.com',
+      messagingSenderId: '123456789',
+      appId: '1:123456789:web:dummy',
+    };
+    
+    // Only use dummy config during build/SSR (when window is undefined)
+    // On client-side, we should have real env vars from Vercel
+    if (typeof window === 'undefined') {
+      // Build/SSR: use dummy config to allow build to complete
+      if (!getApps().length) {
+        app = initializeApp(dummyConfig);
+      } else {
+        app = getApp();
+      }
+      auth = getAuth(app);
+      db = getFirestore(app);
+      googleProvider = new GoogleAuthProvider();
+    } else {
+      // Client-side: try to initialize with whatever config we have
+      // If env vars are missing, this will fail but we'll catch it
+      try {
+        if (!getApps().length) {
+          app = initializeApp(firebaseConfig);
+        } else {
+          app = getApp();
+        }
+        auth = getAuth(app);
+        db = getFirestore(app);
+        googleProvider = new GoogleAuthProvider();
+      } catch (error) {
+        console.error('Firebase initialization failed on client. Please check your environment variables in Vercel:', error);
+        // Re-throw the error so it's visible
+        throw error;
+      }
+    }
   }
+};
+
+try {
+  initializeFirebase();
 } catch (error) {
-  // If initialization fails during build, create dummy instances
-  console.warn('Firebase initialization skipped during build:', error);
-  app = {} as FirebaseApp;
-  auth = {} as Auth;
-  db = {} as Firestore;
-  googleProvider = new GoogleAuthProvider();
+  // Fallback: try with dummy config if initialization fails
+  try {
+    const dummyConfig = {
+      apiKey: 'dummy-key-for-build',
+      authDomain: 'dummy.firebaseapp.com',
+      projectId: 'dummy-project',
+      storageBucket: 'dummy-project.appspot.com',
+      messagingSenderId: '123456789',
+      appId: '1:123456789:web:dummy',
+    };
+    if (!getApps().length) {
+      app = initializeApp(dummyConfig);
+    } else {
+      app = getApp();
+    }
+    auth = getAuth(app);
+    db = getFirestore(app);
+    googleProvider = new GoogleAuthProvider();
+  } catch (dummyError) {
+    console.error('Firebase initialization failed completely:', dummyError);
+    throw dummyError;
+  }
 }
 
 export { app, auth, db, googleProvider };

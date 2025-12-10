@@ -187,3 +187,4 @@ Vercel automatically deploys:
 - [Next.js Deployment](https://nextjs.org/docs/deployment)
 - [Firebase Setup](https://firebase.google.com/docs/web/setup)
 
+

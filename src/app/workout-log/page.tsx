@@ -8,7 +8,6 @@ import { collection, query, where, onSnapshot, orderBy, addDoc, getDoc, doc, del
 import { useRouter } from "next/navigation";
 import { format, addDays, subDays } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -127,44 +126,55 @@ export default function WorkoutLogPage() {
   };
 
   return (
-    <div className="p-4 max-w-lg mx-auto min-h-screen pb-20">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Workout Log</h1>
-        <Link href="/">
-          <Button variant="outline">Dashboard</Button>
-        </Link>
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-background border-b">
+        <div className="flex items-center justify-between px-4 py-3">
+          <Link href="/">
+            <Button variant="ghost" size="icon">
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+          </Link>
+          <h1 className="text-lg font-semibold">Workout Log</h1>
+          <div className="w-10"></div> {/* Spacer for centering */}
+        </div>
       </div>
 
       {/* Date Navigation */}
-      <div className="flex items-center justify-between bg-card p-4 rounded-lg shadow-sm mb-6 border">
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-background">
         <Button variant="ghost" size="icon" onClick={() => handleDateChange(-1)}>
-          <ChevronLeft className="h-6 w-6" />
+          <ChevronLeft className="h-5 w-5" />
         </Button>
-        <span className="text-lg font-medium">{displayDate}</span>
+        <span className="text-base font-medium">
+          {format(currentDate, "EEEE") === format(new Date(), "EEEE") && 
+           format(currentDate, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd") 
+           ? "Today" 
+           : displayDate}
+        </span>
         <Button variant="ghost" size="icon" onClick={() => handleDateChange(1)}>
-          <ChevronRight className="h-6 w-6" />
+          <ChevronRight className="h-5 w-5" />
         </Button>
       </div>
 
-      <div className="flex gap-4 mb-6">
-         <Link href="/workout-routines" className="flex-1">
-          <Button variant="outline" className="w-full">
-            Workout Routines
-          </Button>
-        </Link>
-        <Link href="/exercise-library" className="flex-1">
-          <Button variant="outline" className="w-full">
-            Exercise Library
-          </Button>
-        </Link>
-      </div>
-
-      <Dialog open={isStartWorkoutOpen} onOpenChange={setIsStartWorkoutOpen}>
-        <DialogTrigger asChild>
-          <Button className="w-full mb-6 py-6 text-lg">
-            <Plus className="mr-2 h-5 w-5" /> Start New Workout
-          </Button>
-        </DialogTrigger>
+      <div className="px-4 py-3 border-b bg-muted/30">
+        <div className="flex gap-2 mb-3">
+          <Link href="/workout-routines" className="flex-1">
+            <Button variant="outline" className="w-full" size="sm">
+              Workout Routines
+            </Button>
+          </Link>
+          <Link href="/exercise-library" className="flex-1">
+            <Button variant="outline" className="w-full" size="sm">
+              Exercise Library
+            </Button>
+          </Link>
+        </div>
+        <Dialog open={isStartWorkoutOpen} onOpenChange={setIsStartWorkoutOpen}>
+          <DialogTrigger asChild>
+            <Button className="w-full" size="sm">
+              <Plus className="mr-2 h-4 w-4" /> Start New Workout
+            </Button>
+          </DialogTrigger>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Select a Routine</DialogTitle>
@@ -198,38 +208,43 @@ export default function WorkoutLogPage() {
             </div>
           </ScrollArea>
         </DialogContent>
-      </Dialog>
+        </Dialog>
+      </div>
 
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold mb-2">Workouts for {displayDate}</h2>
+      <div>
         {todaysWorkouts.length === 0 ? (
-          <p className="text-center text-muted-foreground py-8 bg-card/50 rounded-lg border border-dashed">
-            No workouts logged for this day.
-          </p>
+          <div className="px-4 py-8">
+            <p className="text-center text-muted-foreground py-8 border border-dashed rounded-lg">
+              No workouts logged for this day.
+            </p>
+          </div>
         ) : (
-          todaysWorkouts.map((workout) => (
-            <Card key={workout.id} className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => router.push(`/workout-log/${workout.id}`)}>
-              <CardHeader className="py-4 flex flex-row items-center justify-between">
-                <CardTitle className="text-base font-medium">{workout.routineName}</CardTitle>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-destructive hover:bg-destructive/10"
-                  onClick={(e) => handleDeleteWorkout(workout.id, e)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </CardHeader>
-              <CardContent className="pb-4 pt-0">
-                 <p className="text-sm text-muted-foreground">
-                   Status: {workout.status === "completed" ? "Completed" : "In Progress"}
-                 </p>
-                 <p className="text-xs text-muted-foreground mt-1">
-                   {workout.status === "completed" ? "Tap to view" : "Tap to continue"}
-                 </p>
-              </CardContent>
-            </Card>
-          ))
+          <div className="border-t">
+            {todaysWorkouts.map((workout) => (
+              <div 
+                key={workout.id} 
+                className="border-b cursor-pointer hover:bg-accent/50 transition-colors"
+                onClick={() => router.push(`/workout-log/${workout.id}`)}
+              >
+                <div className="flex items-center justify-between px-4 py-4">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-base">{workout.routineName}</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Status: {workout.status === "completed" ? "Completed" : "In Progress"}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                    onClick={(e) => handleDeleteWorkout(workout.id, e)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

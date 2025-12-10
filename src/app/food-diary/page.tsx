@@ -8,7 +8,6 @@ import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot, doc, setDoc, addDoc, getDocs, Timestamp } from "firebase/firestore";
 import { format, addDays, subDays } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -116,6 +115,9 @@ export default function FoodDiaryPage() {
   const [servingSizeDialogOpen, setServingSizeDialogOpen] = useState(false);
   const [selectedFood, setSelectedFood] = useState<Food | null>(null);
   const [adjustedServingSize, setAdjustedServingSize] = useState<string>("");
+  const [editServingSizeDialogOpen, setEditServingSizeDialogOpen] = useState(false);
+  const [editingFoodItem, setEditingFoodItem] = useState<{ mealId: string; foodIndex: number; food: Food } | null>(null);
+  const [editServingSize, setEditServingSize] = useState<string>("");
   const [barcodeDialogOpen, setBarcodeDialogOpen] = useState(false);
   const [barcodeInput, setBarcodeInput] = useState<string>("");
   const [barcodeSearchLoading, setBarcodeSearchLoading] = useState(false);
@@ -276,6 +278,99 @@ export default function FoodDiaryPage() {
     } catch (error) {
       console.error("Error deleting meal:", error);
       toast.error("Failed to delete meal");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle editing serving size of an existing food item
+  const handleEditFoodServingSize = (mealId: string, foodIndex: number) => {
+    if (!foodDiary) return;
+    
+    const meal = foodDiary.meals.find(m => m.id === mealId);
+    if (!meal || !meal.foods[foodIndex]) return;
+    
+    const food = meal.foods[foodIndex];
+    setEditingFoodItem({ mealId, foodIndex, food });
+    setEditServingSize(food.servingSize?.toString() || "100");
+    setEditServingSizeDialogOpen(true);
+  };
+
+  // Handle updating food item serving size
+  const handleUpdateFoodServingSize = async () => {
+    if (!user || !docId || !foodDiary || !editingFoodItem) return;
+
+    const servingSize = Number(editServingSize) || editingFoodItem.food.servingSize || 100;
+    if (servingSize <= 0) {
+      toast.error("Serving size must be greater than 0");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Calculate adjusted values based on new serving size
+      const originalFood = editingFoodItem.food;
+      const ratio = servingSize / 100;
+      
+      const updatedFood: Food = {
+        ...originalFood,
+        caloriesPerServing: originalFood.caloriesPer100g * ratio,
+        proteinPerServing: originalFood.proteinPer100g * ratio,
+        carbsPerServing: originalFood.carbPer100g * ratio,
+        fatPerServing: originalFood.fatPer100g * ratio,
+        servingSize: servingSize,
+      };
+
+      // Find the meal and update the food item
+      const mealIndex = foodDiary.meals.findIndex(m => m.id === editingFoodItem.mealId);
+      if (mealIndex === -1) {
+        toast.error("Meal not found");
+        return;
+      }
+
+      const updatedMeals = [...foodDiary.meals];
+      updatedMeals[mealIndex] = {
+        ...updatedMeals[mealIndex],
+        foods: updatedMeals[mealIndex].foods.map((food, index) => 
+          index === editingFoodItem.foodIndex ? updatedFood : food
+        ),
+      };
+
+      // Recalculate totals
+      let totalCalories = 0;
+      let totalProtein = 0;
+      let totalCarbs = 0;
+      let totalFat = 0;
+
+      updatedMeals.forEach(meal => {
+        meal.foods.forEach(f => {
+          totalCalories += f.caloriesPerServing;
+          totalProtein += f.proteinPerServing;
+          totalCarbs += f.carbsPerServing;
+          totalFat += f.fatPerServing;
+        });
+      });
+
+      const updateData: any = {
+        userId: user.uid,
+        date: dbDate,
+        meals: updatedMeals,
+        totalCalories: totalCalories,
+        totalProtein: totalProtein,
+        totalCarbs: totalCarbs,
+        totalFat: totalFat,
+        updatedAt: Timestamp.now(),
+      };
+
+      await setDoc(doc(db, "food_diary", docId), updateData, { merge: true });
+      
+      toast.success(`${updatedFood.name} serving size updated`);
+      setEditServingSizeDialogOpen(false);
+      setEditingFoodItem(null);
+      setEditServingSize("");
+    } catch (error) {
+      console.error("Error updating food serving size:", error);
+      toast.error("Failed to update serving size");
     } finally {
       setLoading(false);
     }
@@ -1166,235 +1261,174 @@ export default function FoodDiaryPage() {
   const remainingFat = fatGoal - consumedFat;
 
   return (
-    <div className="p-4 max-w-lg mx-auto min-h-screen pb-20">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Food Diary</h1>
-        <Link href="/">
-          <Button variant="outline">Dashboard</Button>
-        </Link>
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-background border-b">
+        <div className="flex items-center justify-between px-4 py-3">
+          <Link href="/">
+            <Button variant="ghost" size="icon">
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+          </Link>
+          <h1 className="text-lg font-semibold">Diary</h1>
+          <div className="w-10"></div> {/* Spacer for centering */}
+        </div>
       </div>
 
       {/* Date Navigation */}
-      <div className="flex items-center justify-between bg-card p-4 rounded-lg shadow-sm mb-6 border">
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-background">
         <Button variant="ghost" size="icon" onClick={() => handleDateChange(-1)}>
-          <ChevronLeft className="h-6 w-6" />
+          <ChevronLeft className="h-5 w-5" />
         </Button>
-        <span className="text-lg font-medium">{displayDate}</span>
+        <span className="text-base font-medium">
+          {format(currentDate, "EEEE") === format(new Date(), "EEEE") && 
+           format(currentDate, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd") 
+           ? "Today" 
+           : displayDate}
+        </span>
         <Button variant="ghost" size="icon" onClick={() => handleDateChange(1)}>
-          <ChevronRight className="h-6 w-6" />
+          <ChevronRight className="h-5 w-5" />
         </Button>
       </div>
 
-      {/* Overview Card */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Daily Overview</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Calories */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="p-4 bg-muted/50 rounded-lg">
-              <p className="text-sm text-muted-foreground mb-1">Goal</p>
-              <p className="text-2xl font-bold">{Math.ceil(calorieGoal).toLocaleString()} cal</p>
-            </div>
-            <div className="p-4 bg-muted/50 rounded-lg">
-              <p className="text-sm text-muted-foreground mb-1">Consumed</p>
-              <p className="text-2xl font-bold">{Math.ceil(consumedCalories).toLocaleString()} cal</p>
-            </div>
-          </div>
-
-          {remainingCalories !== calorieGoal && (
-            <div className="p-3 bg-secondary rounded-lg">
-              <p className="text-sm">
-                <span className="font-medium">Remaining: </span>
-                <span className={remainingCalories >= 0 ? "text-green-600" : "text-red-600"}>
-                  {Math.ceil(remainingCalories).toLocaleString()} cal
-                </span>
-              </p>
-            </div>
-          )}
-
-          {/* Macro Breakdown Pie Chart */}
-          {macroData.length > 0 && (
-            <div className="mt-4">
-              <h3 className="text-sm font-semibold mb-3">Macro Breakdown</h3>
-              <div className="h-[200px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={macroData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={(entry: any) => `${entry.name}: ${Math.ceil(entry.calories)} cal`}
-                      outerRadius={70}
-                      fill="#8884d8"
-                      dataKey="calories"
-                    >
-                      {macroData.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={
-                            entry.name === "Protein" ? COLORS.protein :
-                            entry.name === "Carbs" ? COLORS.carbs :
-                            COLORS.fat
-                          } 
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
-          
-          {/* Macro Summary - Always Display */}
-          <div className="mt-4">
-            <h3 className="text-sm font-semibold mb-3">Macro Summary</h3>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="text-center p-3 bg-muted/30 rounded-lg border">
-                <p className="text-xs text-muted-foreground mb-1">Protein</p>
-                <p className="font-semibold text-lg">{Math.ceil(consumedProtein)}g / {Math.ceil(proteinGoal)}g</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {Math.ceil(consumedProtein * 4)} / {Math.ceil(proteinGoal * 4)} cal
-                </p>
-                <p className={`text-xs mt-1 font-medium ${remainingProtein >= 0 ? "text-green-600" : "text-red-600"}`}>
-                  Remaining: {Math.ceil(remainingProtein)}g
-                </p>
-              </div>
-              <div className="text-center p-3 bg-muted/30 rounded-lg border">
-                <p className="text-xs text-muted-foreground mb-1">Carbs</p>
-                <p className="font-semibold text-lg">{Math.ceil(consumedCarbs)}g / {Math.ceil(carbGoal)}g</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {Math.ceil(consumedCarbs * 4)} / {Math.ceil(carbGoal * 4)} cal
-                </p>
-                <p className={`text-xs mt-1 font-medium ${remainingCarbs >= 0 ? "text-green-600" : "text-red-600"}`}>
-                  Remaining: {Math.ceil(remainingCarbs)}g
-                </p>
-              </div>
-              <div className="text-center p-3 bg-muted/30 rounded-lg border">
-                <p className="text-xs text-muted-foreground mb-1">Fat</p>
-                <p className="font-semibold text-lg">{Math.ceil(consumedFat)}g / {Math.ceil(fatGoal)}g</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {Math.ceil(consumedFat * 9)} / {Math.ceil(fatGoal * 9)} cal
-                </p>
-                <p className={`text-xs mt-1 font-medium ${remainingFat >= 0 ? "text-green-600" : "text-red-600"}`}>
-                  Remaining: {Math.ceil(remainingFat)}g
-                </p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Meals Section */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Meals</h2>
-          <Button onClick={handleAddMeal} disabled={loading} size="sm">
-            <Plus className="h-4 w-4 mr-2" /> Add Meal
-          </Button>
+      {/* Calories Remaining - MyFitnessPal Style */}
+      <div className="px-4 py-4 border-b bg-background">
+        <div className="mb-2">
+          <h2 className="text-sm font-semibold text-muted-foreground">Calories Remaining</h2>
         </div>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="font-semibold">{Math.ceil(calorieGoal).toLocaleString()}</span>
+          <span className="text-muted-foreground">Goal</span>
+          <span className="mx-1">-</span>
+          <span className="font-semibold">{Math.ceil(consumedCalories).toLocaleString()}</span>
+          <span className="text-muted-foreground">Food</span>
+          <span className="mx-1">=</span>
+          <span className={`font-bold text-lg ${remainingCalories >= 0 ? "text-green-600" : "text-red-600"}`}>
+            {Math.ceil(remainingCalories).toLocaleString()}
+          </span>
+          <span className="text-muted-foreground">Remaining</span>
+        </div>
+      </div>
 
+      {/* Meals Section - Full Width */}
+      <div className="pb-20">
         {foodDiary?.meals && foodDiary.meals.length > 0 ? (
-          <div className="space-y-3">
-            {foodDiary.meals.map((meal) => (
-              <Card key={meal.id}>
-                <CardHeader className="py-3 flex flex-row items-center justify-between">
-                  <CardTitle className="text-base">Meal {meal.mealNumber}</CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-destructive hover:bg-destructive/10"
-                    onClick={() => handleDeleteMeal(meal.id)}
-                    disabled={loading}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </CardHeader>
-                <CardContent className="space-y-3">
+          <div>
+            {foodDiary.meals.map((meal) => {
+              const mealTotalCalories = meal.foods.reduce((sum, food) => sum + food.caloriesPerServing, 0);
+              const mealTotalProtein = meal.foods.reduce((sum, food) => sum + food.proteinPerServing, 0);
+              const mealTotalCarbs = meal.foods.reduce((sum, food) => sum + food.carbsPerServing, 0);
+              const mealTotalFat = meal.foods.reduce((sum, food) => sum + food.fatPerServing, 0);
+              
+              return (
+                <div key={meal.id} className="border-b">
+                  {/* Meal Header */}
+                  <div className="flex items-center justify-between px-4 py-3 bg-muted/30">
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-base font-semibold">Meal {meal.mealNumber}</h3>
+                      <span className="text-sm text-muted-foreground">
+                        {meal.foods.length} {meal.foods.length === 1 ? 'item' : 'items'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                        onClick={() => handleDeleteMeal(meal.id)}
+                        disabled={loading}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Meal Foods Table */}
                   {meal.foods && meal.foods.length > 0 ? (
-                    <div className="overflow-x-auto">
+                    <div className="w-full">
                       <Table>
                         <TableHeader>
-                          <TableRow>
-                            <TableHead>Food Name</TableHead>
-                            <TableHead className="text-right">Calories</TableHead>
-                            <TableHead className="text-right">P</TableHead>
-                            <TableHead className="text-right">C</TableHead>
-                            <TableHead className="text-right">F</TableHead>
+                          <TableRow className="border-b">
+                            <TableHead className="font-semibold">Food Name</TableHead>
+                            <TableHead className="text-right font-semibold">Calories</TableHead>
+                            <TableHead className="text-right font-semibold">P</TableHead>
+                            <TableHead className="text-right font-semibold">C</TableHead>
+                            <TableHead className="text-right font-semibold">F</TableHead>
                             <TableHead className="w-[50px]"></TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {meal.foods.map((food, index) => (
-                            <TableRow key={index}>
-                              <TableCell className="font-medium">{food.name}</TableCell>
-                              <TableCell className="text-right">{Math.ceil(food.caloriesPerServing)}</TableCell>
-                              <TableCell className="text-right">{Math.ceil(food.proteinPerServing)}</TableCell>
-                              <TableCell className="text-right">{Math.ceil(food.carbsPerServing)}</TableCell>
-                              <TableCell className="text-right">{Math.ceil(food.fatPerServing)}</TableCell>
-                              <TableCell>
+                            <TableRow 
+                              key={index}
+                              className="cursor-pointer hover:bg-accent/50 transition-colors border-b"
+                              onClick={() => handleEditFoodServingSize(meal.id, index)}
+                            >
+                              <TableCell className="font-medium py-3">{food.name}</TableCell>
+                              <TableCell className="text-right py-3">{Math.ceil(food.caloriesPerServing)}</TableCell>
+                              <TableCell className="text-right py-3">{Math.ceil(food.proteinPerServing)}</TableCell>
+                              <TableCell className="text-right py-3">{Math.ceil(food.carbsPerServing)}</TableCell>
+                              <TableCell className="text-right py-3">{Math.ceil(food.fatPerServing)}</TableCell>
+                              <TableCell onClick={(e) => e.stopPropagation()} className="py-3">
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-6 w-6 text-destructive hover:bg-destructive/10"
+                                  className="h-7 w-7 text-destructive hover:bg-destructive/10"
                                   onClick={() => handleRemoveFoodFromMeal(meal.id, index)}
                                   disabled={loading}
                                 >
-                                  <Trash2 className="h-3 w-3" />
+                                  <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
                               </TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
-                        <TableFooter>
-                          <TableRow className="font-semibold">
-                            <TableCell>Total</TableCell>
-                            <TableCell className="text-right">
-                              {Math.ceil(meal.foods.reduce((sum, food) => sum + food.caloriesPerServing, 0))}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {Math.ceil(meal.foods.reduce((sum, food) => sum + food.proteinPerServing, 0))}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {Math.ceil(meal.foods.reduce((sum, food) => sum + food.carbsPerServing, 0))}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {Math.ceil(meal.foods.reduce((sum, food) => sum + food.fatPerServing, 0))}
-                            </TableCell>
-                            <TableCell></TableCell>
+                        <TableFooter className="bg-muted/20">
+                          <TableRow className="font-semibold border-t-2">
+                            <TableCell className="py-3">Total</TableCell>
+                            <TableCell className="text-right py-3">{Math.ceil(mealTotalCalories)}</TableCell>
+                            <TableCell className="text-right py-3">{Math.ceil(mealTotalProtein)}</TableCell>
+                            <TableCell className="text-right py-3">{Math.ceil(mealTotalCarbs)}</TableCell>
+                            <TableCell className="text-right py-3">{Math.ceil(mealTotalFat)}</TableCell>
+                            <TableCell className="py-3"></TableCell>
                           </TableRow>
                         </TableFooter>
                       </Table>
                     </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No foods added yet
-                    </p>
-                  )}
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="w-full"
-                    onClick={() => {
-                      setSelectedMealId(meal.id);
-                      setFoodSelectionOpen(true);
-                    }}
-                  >
-                    <Plus className="h-4 w-4 mr-2" /> Add Food
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
+                  ) : null}
+
+                  {/* Add Food Button */}
+                  <div className="px-4 py-3">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+                      onClick={() => {
+                        setSelectedMealId(meal.id);
+                        setFoodSelectionOpen(true);
+                      }}
+                    >
+                      <Plus className="h-4 w-4 mr-2" /> ADD FOOD
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         ) : (
-          <div className="text-center py-8 text-muted-foreground bg-card/50 rounded-lg border border-dashed">
-            No meals logged for this day. Click "Add Meal" to get started.
+          <div className="px-4 py-8">
+            <div className="text-center py-8 text-muted-foreground border border-dashed rounded-lg">
+              <p className="mb-4">No meals logged for this day.</p>
+            </div>
           </div>
         )}
+
+        {/* Add Meal Button - Always visible */}
+        <div className="px-4 py-4 border-t bg-muted/20">
+          <Button onClick={handleAddMeal} disabled={loading} className="w-full" variant="outline">
+            <Plus className="h-4 w-4 mr-2" /> Add Meal
+          </Button>
+        </div>
       </div>
 
       {/* Food Selection Dialog */}
@@ -2152,6 +2186,98 @@ export default function FoodDiaryPage() {
               {editFoodLoading ? "Updating..." : "Update Food"}
             </Button>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Serving Size Dialog for Existing Food Items */}
+      <Dialog open={editServingSizeDialogOpen} onOpenChange={(open) => {
+        setEditServingSizeDialogOpen(open);
+        if (!open) {
+          setEditingFoodItem(null);
+          setEditServingSize("");
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Serving Size</DialogTitle>
+          </DialogHeader>
+          
+          {editingFoodItem && (
+            <div className="space-y-4">
+              <div>
+                <p className="font-semibold text-lg mb-2">{editingFoodItem.food.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  Current serving: {Math.ceil(editingFoodItem.food.servingSize || 100)}g
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="editServingSize">Serving Size (grams) *</Label>
+                <Input
+                  id="editServingSize"
+                  type="number"
+                  step="0.1"
+                  min="0.1"
+                  value={editServingSize}
+                  onChange={(e) => setEditServingSize(e.target.value)}
+                  placeholder="Enter serving size"
+                />
+              </div>
+
+              {editServingSize && Number(editServingSize) > 0 && (
+                <div className="p-4 bg-muted/30 rounded-lg space-y-2 border">
+                  <p className="text-sm font-semibold mb-2">Updated Nutritional Values:</p>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Calories</p>
+                      <p className="font-semibold">
+                        {Math.ceil(calculateAdjustedValues(editingFoodItem.food, Number(editServingSize)).caloriesPerServing)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Protein</p>
+                      <p className="font-semibold">
+                        {Math.ceil(calculateAdjustedValues(editingFoodItem.food, Number(editServingSize)).proteinPerServing)}g
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Carbs</p>
+                      <p className="font-semibold">
+                        {Math.ceil(calculateAdjustedValues(editingFoodItem.food, Number(editServingSize)).carbsPerServing)}g
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Fat</p>
+                      <p className="font-semibold">
+                        {Math.ceil(calculateAdjustedValues(editingFoodItem.food, Number(editServingSize)).fatPerServing)}g
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setEditServingSizeDialogOpen(false);
+                    setEditingFoodItem(null);
+                    setEditServingSize("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleUpdateFoodServingSize}
+                  disabled={loading || !editServingSize || Number(editServingSize) <= 0}
+                >
+                  {loading ? "Updating..." : "Update"}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

@@ -333,21 +333,20 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
 
     try {
       // Get exercise names for selected IDs
-      const exercisesToAdd: WorkoutExercise[] = selectedExercisesToAdd
-        .map(exerciseId => {
-          const exercise = exerciseLibrary.find(e => e.id === exerciseId);
-          if (!exercise) return null;
-          // Check if exercise already exists in workout
-          if (workout.exercises.some(e => e.exerciseId === exerciseId)) {
-            return null;
-          }
-          return {
-            exerciseId: exercise.id,
-            name: exercise.name,
-            sets: []
-          };
-        })
-        .filter((e): e is WorkoutExercise => e !== null);
+      const exercisesToAdd: WorkoutExercise[] = [];
+      for (const exerciseId of selectedExercisesToAdd) {
+        const exercise = exerciseLibrary.find(e => e.id === exerciseId);
+        if (!exercise) continue;
+        // Check if exercise already exists in workout
+        if (workout.exercises.some(e => e.exerciseId === exerciseId)) {
+          continue;
+        }
+        exercisesToAdd.push({
+          exerciseId: exercise.id,
+          name: exercise.name,
+          sets: []
+        });
+      }
 
       if (exercisesToAdd.length === 0) {
         toast.error("Selected exercises are already in the workout or not found");

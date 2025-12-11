@@ -66,7 +66,8 @@ export default function Home() {
           return null;
         });
 
-        const foodDiaries = (await Promise.all(foodDiariesPromises)).filter(Boolean);
+        const foodDiariesResults = await Promise.all(foodDiariesPromises);
+        const foodDiaries = foodDiariesResults.filter((diary): diary is NonNullable<typeof diary> => diary !== null);
 
         // Fetch workout logs for the week
         const workoutLogsPromises = weekDates.map(async (date) => {

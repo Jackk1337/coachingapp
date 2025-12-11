@@ -143,111 +143,112 @@ export default function CardioLogPage() {
         </Button>
       </div>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogTrigger asChild>
-          <Button className="w-full mb-6">
-            <Plus className="mr-2 h-5 w-5" /> Log Cardio Session
-          </Button>
-        </DialogTrigger>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Cardio Session</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="name">Activity Name</Label>
-              <Input
-                id="name"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                placeholder="e.g. Running, Cycling"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="time">Duration (minutes)</Label>
-              <Input
-                id="time"
-                name="time"
-                type="number"
-                value={formData.time}
-                onChange={handleChange}
-                placeholder="e.g. 30"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="avgHeartRate">Avg Heart Rate (bpm)</Label>
-              <Input
-                id="avgHeartRate"
-                name="avgHeartRate"
-                type="number"
-                value={formData.avgHeartRate}
-                onChange={handleChange}
-                placeholder="e.g. 145"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="calories">Calories Burned</Label>
-              <Input
-                id="calories"
-                name="calories"
-                type="number"
-                value={formData.calories}
-                onChange={handleChange}
-                placeholder="e.g. 300"
-              />
-            </div>
-            <Button onClick={handleAddCardio} disabled={!formData.name || !formData.time}>
-              Save Session
+      <div className="px-4 py-6">
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="w-full mb-6">
+              <Plus className="mr-2 h-5 w-5" /> Log Cardio Session
             </Button>
-          </div>
-        </DialogContent>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add Cardio Session</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="name">Activity Name</Label>
+                <Input
+                  id="name"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  placeholder="e.g. Running, Cycling"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="time">Duration (minutes)</Label>
+                <Input
+                  id="time"
+                  name="time"
+                  type="number"
+                  value={formData.time}
+                  onChange={handleChange}
+                  placeholder="e.g. 30"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="avgHeartRate">Avg Heart Rate (bpm)</Label>
+                <Input
+                  id="avgHeartRate"
+                  name="avgHeartRate"
+                  type="number"
+                  value={formData.avgHeartRate}
+                  onChange={handleChange}
+                  placeholder="e.g. 145"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="calories">Calories Burned</Label>
+                <Input
+                  id="calories"
+                  name="calories"
+                  type="number"
+                  value={formData.calories}
+                  onChange={handleChange}
+                  placeholder="e.g. 300"
+                />
+              </div>
+              <Button onClick={handleAddCardio} disabled={!formData.name || !formData.time}>
+                Save Session
+              </Button>
+            </div>
+          </DialogContent>
         </Dialog>
 
         <div className="space-y-4">
-        {cardioSessions.map((session) => (
-          <Card key={session.id}>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-lg font-medium flex items-center gap-2">
-                <Activity className="h-5 w-5 text-primary" />
-                {session.name}
-              </CardTitle>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => handleDeleteCardio(session.id)}
-                className="text-destructive hover:bg-destructive/10"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <div className="flex flex-col items-center p-2 bg-secondary/50 rounded-md">
-                  <Timer className="h-4 w-4 mb-1 text-muted-foreground" />
-                  <span className="font-bold">{session.time}</span>
-                  <span className="text-xs text-muted-foreground">mins</span>
+          {cardioSessions.map((session) => (
+            <Card key={session.id}>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-lg font-medium flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-primary" />
+                  {session.name}
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleDeleteCardio(session.id)}
+                  className="text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div className="flex flex-col items-center p-2 bg-secondary/50 rounded-md">
+                    <Timer className="h-4 w-4 mb-1 text-muted-foreground" />
+                    <span className="font-bold">{session.time}</span>
+                    <span className="text-xs text-muted-foreground">mins</span>
+                  </div>
+                  <div className="flex flex-col items-center p-2 bg-secondary/50 rounded-md">
+                    <Heart className="h-4 w-4 mb-1 text-muted-foreground" />
+                    <span className="font-bold">{session.avgHeartRate || "-"}</span>
+                    <span className="text-xs text-muted-foreground">bpm</span>
+                  </div>
+                  <div className="flex flex-col items-center p-2 bg-secondary/50 rounded-md">
+                    <Flame className="h-4 w-4 mb-1 text-muted-foreground" />
+                    <span className="font-bold">{session.calories || "-"}</span>
+                    <span className="text-xs text-muted-foreground">cal</span>
+                  </div>
                 </div>
-                <div className="flex flex-col items-center p-2 bg-secondary/50 rounded-md">
-                  <Heart className="h-4 w-4 mb-1 text-muted-foreground" />
-                  <span className="font-bold">{session.avgHeartRate || "-"}</span>
-                  <span className="text-xs text-muted-foreground">bpm</span>
-                </div>
-                <div className="flex flex-col items-center p-2 bg-secondary/50 rounded-md">
-                  <Flame className="h-4 w-4 mb-1 text-muted-foreground" />
-                  <span className="font-bold">{session.calories || "-"}</span>
-                  <span className="text-xs text-muted-foreground">cal</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-        
-        {cardioSessions.length === 0 && (
-          <div className="text-center py-10 text-muted-foreground">
-            No cardio sessions logged for this day.
-          </div>
-        )}
+              </CardContent>
+            </Card>
+          ))}
+          
+          {cardioSessions.length === 0 && (
+            <div className="text-center py-10 text-muted-foreground">
+              No cardio sessions logged for this day.
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -156,17 +156,24 @@ export default function ProgressPage() {
   }));
 
   return (
-    <div className="p-4 max-w-4xl mx-auto min-h-screen pb-20">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Progress</h1>
-        <Link href="/">
-          <Button variant="outline">Dashboard</Button>
-        </Link>
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-background border-b">
+        <div className="flex items-center justify-between px-4 py-3">
+          <Link href="/">
+            <Button variant="ghost" size="icon">
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+          </Link>
+          <h1 className="text-lg font-semibold">Progress</h1>
+          <div className="w-10"></div> {/* Spacer for centering */}
+        </div>
       </div>
 
-      <div className="flex items-center justify-between bg-card p-4 rounded-lg shadow-sm mb-6 border">
+      {/* Week Navigation */}
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-background">
         <Button variant="ghost" size="icon" onClick={() => handleWeekChange(-1)}>
-          <ChevronLeft className="h-6 w-6" />
+          <ChevronLeft className="h-5 w-5" />
         </Button>
         <div className="text-center">
           <span className="text-lg font-medium block">
@@ -174,9 +181,11 @@ export default function ProgressPage() {
           </span>
         </div>
         <Button variant="ghost" size="icon" onClick={() => handleWeekChange(1)}>
-          <ChevronRight className="h-6 w-6" />
+          <ChevronRight className="h-5 w-5" />
         </Button>
       </div>
+
+      <div className="px-4 py-6 max-w-4xl mx-auto">
 
       <Card className="mb-8">
         <CardHeader>
@@ -331,6 +340,7 @@ export default function ProgressPage() {
                 </div>
             </CardContent>
         </Card>
+      </div>
       </div>
     </div>
   );

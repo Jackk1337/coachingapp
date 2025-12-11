@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 
 // Calorie constants per gram
@@ -122,13 +123,21 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="p-4 max-w-lg mx-auto pb-20">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Profile</h1>
-        <Link href="/">
-          <Button variant="outline">Back</Button>
-        </Link>
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-background border-b">
+        <div className="flex items-center justify-between px-4 py-3">
+          <Link href="/">
+            <Button variant="ghost" size="icon">
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+          </Link>
+          <h1 className="text-lg font-semibold">Profile</h1>
+          <div className="w-10"></div> {/* Spacer for centering */}
+        </div>
       </div>
+
+      <div className="px-4 py-6 max-w-lg mx-auto">
 
       <div className="flex flex-col items-center mb-6 gap-2">
         <Avatar className="h-24 w-24">
@@ -282,6 +291,7 @@ export default function ProfilePage() {
         <Button variant="destructive" className="w-full" onClick={signOut}>
           Sign Out
         </Button>
+      </div>
       </div>
     </div>
   );

@@ -134,27 +134,37 @@ export default function DailyCheckinPage() {
   }
 
   return (
-    <div className="p-4 max-w-lg mx-auto min-h-screen pb-20">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Daily Checkin</h1>
-        <Link href="/">
-          <Button variant="outline" size="icon">
-             <ChevronLeft className="h-4 w-4" />
-          </Button>
-        </Link>
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-background border-b">
+        <div className="flex items-center justify-between px-4 py-3">
+          <Link href="/">
+            <Button variant="ghost" size="icon">
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+          </Link>
+          <h1 className="text-lg font-semibold">Daily Checkin</h1>
+          <div className="w-10"></div> {/* Spacer for centering */}
+        </div>
       </div>
 
       {/* Date Navigation */}
-      <div className="flex items-center justify-between bg-card p-4 rounded-lg shadow-sm mb-6 border">
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-background">
         <Button variant="ghost" size="icon" onClick={() => handleDateChange(-1)}>
-          <ChevronLeft className="h-6 w-6" />
+          <ChevronLeft className="h-5 w-5" />
         </Button>
-        <span className="text-lg font-medium">{displayDate}</span>
+        <span className="text-base font-medium">
+          {format(currentDate, "EEEE") === format(new Date(), "EEEE") && 
+           format(currentDate, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd") 
+           ? "Today" 
+           : displayDate}
+        </span>
         <Button variant="ghost" size="icon" onClick={() => handleDateChange(1)}>
-          <ChevronRight className="h-6 w-6" />
+          <ChevronRight className="h-5 w-5" />
         </Button>
       </div>
 
+      <div className="px-4 py-6">
       <Card>
         <CardHeader>
           <CardTitle>
@@ -282,6 +292,7 @@ export default function DailyCheckinPage() {
           </form>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

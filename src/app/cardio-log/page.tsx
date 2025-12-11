@@ -113,22 +113,33 @@ export default function CardioLogPage() {
   };
 
   return (
-    <div className="p-4 max-w-lg mx-auto min-h-screen pb-20">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Cardio Log</h1>
-        <Link href="/">
-          <Button variant="outline">Dashboard</Button>
-        </Link>
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-background border-b">
+        <div className="flex items-center justify-between px-4 py-3">
+          <Link href="/">
+            <Button variant="ghost" size="icon">
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+          </Link>
+          <h1 className="text-lg font-semibold">Cardio Log</h1>
+          <div className="w-10"></div> {/* Spacer for centering */}
+        </div>
       </div>
 
       {/* Date Navigation */}
-      <div className="flex items-center justify-between bg-card p-4 rounded-lg shadow-sm mb-6 border">
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-background">
         <Button variant="ghost" size="icon" onClick={() => handleDateChange(-1)}>
-          <ChevronLeft className="h-6 w-6" />
+          <ChevronLeft className="h-5 w-5" />
         </Button>
-        <span className="text-lg font-medium">{displayDate}</span>
+        <span className="text-base font-medium">
+          {format(currentDate, "EEEE") === format(new Date(), "EEEE") && 
+           format(currentDate, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd") 
+           ? "Today" 
+           : displayDate}
+        </span>
         <Button variant="ghost" size="icon" onClick={() => handleDateChange(1)}>
-          <ChevronRight className="h-6 w-6" />
+          <ChevronRight className="h-5 w-5" />
         </Button>
       </div>
 
@@ -191,9 +202,9 @@ export default function CardioLogPage() {
             </Button>
           </div>
         </DialogContent>
-      </Dialog>
+        </Dialog>
 
-      <div className="space-y-4">
+        <div className="space-y-4">
         {cardioSessions.map((session) => (
           <Card key={session.id}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -237,6 +248,7 @@ export default function CardioLogPage() {
             No cardio sessions logged for this day.
           </div>
         )}
+        </div>
       </div>
     </div>
   );

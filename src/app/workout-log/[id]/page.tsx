@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
-import { doc, getDoc, updateDoc, collection, getDocs, query, where, documentId, orderBy } from "firebase/firestore";
+import { doc, getDoc, updateDoc, collection, getDocs, query, where, documentId, orderBy, onSnapshot } from "firebase/firestore";
 import { format, parseISO } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,6 +49,12 @@ interface ExerciseHistoryEntry {
   sets: WorkoutSet[];
 }
 
+interface Exercise {
+  id: string;
+  name: string;
+  category: string;
+}
+
 // Simple debounce helper
 function useDebounce(callback: Function, delay: number) {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -79,6 +85,9 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
   const [selectedExerciseName, setSelectedExerciseName] = useState<string>("");
   const [exerciseHistory, setExerciseHistory] = useState<ExerciseHistoryEntry[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [addExerciseDialogOpen, setAddExerciseDialogOpen] = useState(false);
+  const [exerciseLibrary, setExerciseLibrary] = useState<Exercise[]>([]);
+  const [selectedExercisesToAdd, setSelectedExercisesToAdd] = useState<string[]>([]);
 
   // Ref to keep track of latest workout state for the debounce save
   const workoutRef = useRef<WorkoutLog | null>(null);
@@ -98,35 +107,56 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
 
   const debouncedSave = useDebounce(saveToFirestore, 1000);
 
+  // Real-time listener for workout updates
   useEffect(() => {
     if (!user || !workoutId) return;
 
-    const fetchWorkoutData = async () => {
-      try {
-        const workoutDocRef = doc(db, "workout_logs", workoutId);
-        const workoutSnap = await getDoc(workoutDocRef);
-
-        if (workoutSnap.exists()) {
-          const workoutData = workoutSnap.data() as WorkoutLog;
-          
-          if (workoutData.exercises && workoutData.exercises.length > 0) {
-             setWorkout({ ...workoutData, id: workoutSnap.id });
-          } else {
-             await initializeExercises(workoutDocRef, workoutData.routineId, workoutData);
+    const workoutDocRef = doc(db, "workout_logs", workoutId);
+    let isInitialLoad = true;
+    
+    const unsubscribe = onSnapshot(workoutDocRef, async (workoutSnap) => {
+      if (workoutSnap.exists()) {
+        const workoutData = workoutSnap.data() as WorkoutLog;
+        
+        // IMPORTANT: Once a workout is started, it's independent from the routine
+        // Changes to the routine should NOT affect active workouts
+        // Check if exercises field exists (even if empty array) - if it exists, workout has been initialized
+        if (workoutData.exercises !== undefined && workoutData.exercises !== null) {
+          // Workout has been initialized - use existing exercises (even if empty)
+          // Only update if the data has actually changed to prevent unnecessary re-renders
+          setWorkout((prevWorkout) => {
+            const newWorkout = { ...workoutData, id: workoutSnap.id };
+            // Compare exercises arrays to see if they're different
+            if (prevWorkout && JSON.stringify(prevWorkout.exercises) === JSON.stringify(newWorkout.exercises)) {
+              return prevWorkout; // No change, return previous state
+            }
+            return newWorkout;
+          });
+          if (isInitialLoad) {
+            setLoading(false);
+            isInitialLoad = false;
           }
         } else {
-          toast.error("Workout not found");
-          router.push("/workout-log");
+          // Initialize exercises from routine ONLY if workout has never been initialized
+          // This only happens on the first load when starting a new workout
+          await initializeExercises(workoutDocRef, workoutData.routineId, workoutData);
+          if (isInitialLoad) {
+            setLoading(false);
+            isInitialLoad = false;
+          }
         }
-      } catch (error) {
-        console.error("Error fetching workout:", error);
-        toast.error("Failed to load workout");
-      } finally {
+      } else {
+        toast.error("Workout not found");
+        router.push("/workout-log");
         setLoading(false);
       }
-    };
+    }, (error) => {
+      console.error("Error listening to workout:", error);
+      toast.error("Failed to load workout");
+      setLoading(false);
+    });
 
-    fetchWorkoutData();
+    return () => unsubscribe();
   }, [user, workoutId, router]);
 
   const initializeExercises = async (workoutDocRef: any, routineId: string, currentData: any) => {
@@ -210,6 +240,25 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
      handleUpdate(updatedExercises);
   };
 
+  const handleDeleteExercise = async (exerciseIndex: number) => {
+    if (!workout) return;
+    
+    const exercise = workout.exercises[exerciseIndex];
+    if (!confirm(`Remove "${exercise.name}" from this workout? This will only affect this workout session, not your routine.`)) {
+      return;
+    }
+
+    try {
+      const updatedExercises = workout.exercises.filter((_, index) => index !== exerciseIndex);
+      const workoutDocRef = doc(db, "workout_logs", workoutId);
+      await updateDoc(workoutDocRef, { exercises: updatedExercises });
+      toast.success("Exercise removed from workout");
+    } catch (error) {
+      console.error("Error removing exercise:", error);
+      toast.error("Failed to remove exercise");
+    }
+  };
+
   const handleViewHistory = async (exerciseId: string, exerciseName: string) => {
     if (!user) return;
     
@@ -258,6 +307,76 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
     }
   };
 
+  // Fetch exercise library for adding exercises
+  useEffect(() => {
+    if (!user || !addExerciseDialogOpen) return;
+
+    const exercisesQuery = query(
+      collection(db, "exercise_library"),
+      where("userId", "==", user.uid),
+      orderBy("name")
+    );
+
+    const unsubscribe = onSnapshot(exercisesQuery, (snapshot) => {
+      const exerciseList: Exercise[] = [];
+      snapshot.forEach((doc) => {
+        exerciseList.push({ id: doc.id, ...doc.data() } as Exercise);
+      });
+      setExerciseLibrary(exerciseList);
+    });
+
+    return () => unsubscribe();
+  }, [user, addExerciseDialogOpen]);
+
+  const handleAddExercisesToWorkout = async () => {
+    if (!workout || selectedExercisesToAdd.length === 0) return;
+
+    try {
+      // Get exercise names for selected IDs
+      const exercisesToAdd: WorkoutExercise[] = selectedExercisesToAdd
+        .map(exerciseId => {
+          const exercise = exerciseLibrary.find(e => e.id === exerciseId);
+          if (!exercise) return null;
+          // Check if exercise already exists in workout
+          if (workout.exercises.some(e => e.exerciseId === exerciseId)) {
+            return null;
+          }
+          return {
+            exerciseId: exercise.id,
+            name: exercise.name,
+            sets: []
+          };
+        })
+        .filter((e): e is WorkoutExercise => e !== null);
+
+      if (exercisesToAdd.length === 0) {
+        toast.error("Selected exercises are already in the workout or not found");
+        return;
+      }
+
+      const updatedExercises = [...workout.exercises, ...exercisesToAdd];
+      const workoutDocRef = doc(db, "workout_logs", workoutId);
+      await updateDoc(workoutDocRef, { exercises: updatedExercises });
+      
+      setSelectedExercisesToAdd([]);
+      setAddExerciseDialogOpen(false);
+      toast.success(`${exercisesToAdd.length} exercise(s) added to workout!`);
+    } catch (error) {
+      console.error("Error adding exercises:", error);
+      toast.error("Failed to add exercises");
+    }
+  };
+
+  const toggleExerciseSelection = (exerciseId: string) => {
+    setSelectedExercisesToAdd((prev) => {
+      if (prev.includes(exerciseId)) {
+        return prev.filter(id => id !== exerciseId);
+      } else {
+        return [...prev, exerciseId];
+      }
+    });
+  };
+
   const handleEndWorkout = async () => {
     if (!workout) return;
     setSaving(true);
@@ -304,19 +423,41 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
         </Button>
       </div>
 
+      {/* Add Exercise Button */}
+      <div className="mb-4">
+        <Button 
+          variant="outline" 
+          className="w-full"
+          onClick={() => setAddExerciseDialogOpen(true)}
+        >
+          <Plus className="h-4 w-4 mr-2" /> Add Exercise
+        </Button>
+      </div>
+
       <div className="space-y-6">
         {workout.exercises.map((exercise, exerciseIndex) => (
           <Card key={exercise.exerciseId}>
             <CardHeader className="py-4 bg-muted/20 flex flex-row items-center justify-between">
               <CardTitle className="text-lg">{exercise.name}</CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleViewHistory(exercise.exerciseId, exercise.name)}
-              >
-                <History className="h-4 w-4 mr-2" />
-                History
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleViewHistory(exercise.exerciseId, exercise.name)}
+                >
+                  <History className="h-4 w-4 mr-2" />
+                  History
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDeleteExercise(exerciseIndex)}
+                  className="text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Remove
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
                <Table>
@@ -446,6 +587,91 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
               </div>
             )}
           </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Exercise Dialog */}
+      <Dialog 
+        open={addExerciseDialogOpen} 
+        onOpenChange={(open) => {
+          setAddExerciseDialogOpen(open);
+          if (!open) {
+            setSelectedExercisesToAdd([]);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Add Exercise to Workout</DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="flex-1 pr-4">
+            {exerciseLibrary.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No exercises found. Create exercises in the Exercise Library first.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {(() => {
+                  const availableExercises = exerciseLibrary.filter(
+                    exercise => !workout.exercises.some(e => e.exerciseId === exercise.id)
+                  );
+                  
+                  if (availableExercises.length === 0) {
+                    return (
+                      <div className="text-center py-8 text-muted-foreground">
+                        All available exercises are already in this workout.
+                      </div>
+                    );
+                  }
+                  
+                  return availableExercises.map((exercise) => (
+                    <div
+                      key={exercise.id}
+                      className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-colors ${
+                        selectedExercisesToAdd.includes(exercise.id)
+                          ? "bg-primary/10 border-primary"
+                          : "hover:bg-accent/50"
+                      }`}
+                      onClick={() => toggleExerciseSelection(exercise.id)}
+                    >
+                      <div className="flex-1">
+                        <p className="font-medium">{exercise.name}</p>
+                        <p className="text-sm text-muted-foreground">{exercise.category}</p>
+                      </div>
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                        selectedExercisesToAdd.includes(exercise.id)
+                          ? "bg-primary border-primary"
+                          : "border-muted-foreground"
+                      }`}>
+                        {selectedExercisesToAdd.includes(exercise.id) && (
+                          <span className="text-primary-foreground text-xs">✓</span>
+                        )}
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            )}
+          </ScrollArea>
+          <div className="flex gap-2 pt-4 border-t">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setAddExerciseDialogOpen(false);
+                setSelectedExercisesToAdd([]);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={handleAddExercisesToWorkout}
+              disabled={selectedExercisesToAdd.length === 0}
+            >
+              Add {selectedExercisesToAdd.length > 0 ? `(${selectedExercisesToAdd.length})` : ""}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

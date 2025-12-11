@@ -18,7 +18,14 @@ import {
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Trash2, GripVertical, Pencil } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Trash2, GripVertical, Pencil, ChevronLeft, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -91,6 +98,12 @@ export default function WorkoutRoutinesPage() {
   const [editingRoutineId, setEditingRoutineId] = useState<string | null>(null);
   const [routineName, setRoutineName] = useState("");
   const [selectedExercises, setSelectedExercises] = useState<Exercise[]>([]);
+  const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
+  
+  // Add Exercise Dialog State
+  const [isAddExerciseDialogOpen, setIsAddExerciseDialogOpen] = useState(false);
+  const [newExerciseName, setNewExerciseName] = useState("");
+  const [newExerciseCategory, setNewExerciseCategory] = useState("");
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -142,6 +155,12 @@ export default function WorkoutRoutinesPage() {
     setRoutineName("");
     setSelectedExercises([]);
     setEditingRoutineId(null);
+    setExerciseSearchQuery("");
+  };
+
+  const resetAddExerciseForm = () => {
+    setNewExerciseName("");
+    setNewExerciseCategory("");
   };
 
   const handleOpenCreate = () => {
@@ -229,14 +248,60 @@ export default function WorkoutRoutinesPage() {
     return exercise ? exercise.name : "Unknown Exercise";
   };
 
+  const handleAddNewExercise = async () => {
+    if (!newExerciseName || !newExerciseCategory || !user) return;
+
+    try {
+      const docRef = await addDoc(collection(db, "exercise_library"), {
+        name: newExerciseName,
+        category: newExerciseCategory,
+        userId: user.uid,
+        createdAt: new Date(),
+      });
+      
+      // Automatically add the new exercise to selected exercises
+      const newExercise: Exercise = {
+        id: docRef.id,
+        name: newExerciseName,
+        category: newExerciseCategory as Exercise["category"],
+      };
+      setSelectedExercises((prev) => [...prev, newExercise]);
+      
+      resetAddExerciseForm();
+      setIsAddExerciseDialogOpen(false);
+      toast.success("Exercise created and added to routine!");
+    } catch (error) {
+      console.error("Error adding exercise: ", error);
+      toast.error("Failed to create exercise.");
+    }
+  };
+
+  // Filter exercises based on search query
+  const filteredExercises = exercises.filter((exercise) => {
+    if (!exerciseSearchQuery.trim()) return true;
+    const query = exerciseSearchQuery.toLowerCase();
+    return (
+      exercise.name.toLowerCase().includes(query) ||
+      exercise.category.toLowerCase().includes(query)
+    );
+  });
+
   return (
-    <div className="p-4 max-w-lg mx-auto min-h-screen pb-20">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Workout Routines</h1>
-        <Link href="/workout-log">
-          <Button variant="outline">Back</Button>
-        </Link>
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-background border-b">
+        <div className="flex items-center justify-between px-4 py-3">
+          <Link href="/workout-log">
+            <Button variant="ghost" size="icon">
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+          </Link>
+          <h1 className="text-lg font-semibold">Workout Routines</h1>
+          <div className="w-10"></div> {/* Spacer for centering */}
+        </div>
       </div>
+
+      <div className="px-4 py-6 max-w-lg mx-auto">
 
       <Dialog open={isDialogOpen} onOpenChange={(open) => {
         setIsDialogOpen(open);
@@ -264,9 +329,31 @@ export default function WorkoutRoutinesPage() {
               <div className="grid grid-cols-2 gap-4 h-full">
                 {/* Available Exercises */}
                 <div className="flex flex-col h-full border rounded-md overflow-hidden">
-                  <div className="p-2 bg-muted font-medium text-sm border-b">All Exercises</div>
+                  <div className="p-2 bg-muted font-medium text-sm border-b flex items-center justify-between">
+                    <span>All Exercises</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => setIsAddExerciseDialogOpen(true)}
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      New
+                    </Button>
+                  </div>
+                  <div className="p-2 border-b">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search exercises..."
+                        value={exerciseSearchQuery}
+                        onChange={(e) => setExerciseSearchQuery(e.target.value)}
+                        className="pl-8 h-8 text-sm"
+                      />
+                    </div>
+                  </div>
                   <ScrollArea className="flex-1 p-2">
-                    {exercises.map((exercise) => {
+                    {filteredExercises.map((exercise) => {
                         const isSelected = selectedExercises.some(e => e.id === exercise.id);
                         return (
                             <div key={exercise.id} className="flex items-center space-x-2 mb-2">
@@ -275,13 +362,16 @@ export default function WorkoutRoutinesPage() {
                                 checked={isSelected}
                                 onCheckedChange={() => toggleExerciseSelection(exercise)}
                                 />
-                                <Label htmlFor={exercise.id} className="cursor-pointer text-sm">
+                                <Label htmlFor={exercise.id} className="cursor-pointer text-sm flex-1">
                                 {exercise.name}
                                 </Label>
                             </div>
                         )
                     })}
-                    {exercises.length === 0 && <p className="text-xs text-muted-foreground">No exercises found.</p>}
+                    {filteredExercises.length === 0 && exercises.length > 0 && (
+                      <p className="text-xs text-muted-foreground">No exercises match your search.</p>
+                    )}
+                    {exercises.length === 0 && <p className="text-xs text-muted-foreground">No exercises found. Create one!</p>}
                   </ScrollArea>
                 </div>
 
@@ -325,6 +415,47 @@ export default function WorkoutRoutinesPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Add New Exercise Dialog */}
+      <Dialog open={isAddExerciseDialogOpen} onOpenChange={(open) => {
+        setIsAddExerciseDialogOpen(open);
+        if (!open) resetAddExerciseForm();
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Exercise</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="new-exercise-name">Exercise Name</Label>
+              <Input
+                id="new-exercise-name"
+                value={newExerciseName}
+                onChange={(e) => setNewExerciseName(e.target.value)}
+                placeholder="e.g. Bench Press"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="new-exercise-category">Category</Label>
+              <Select onValueChange={setNewExerciseCategory} value={newExerciseCategory}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {["Abs", "Back", "Biceps", "Chest", "Legs", "Shoulders", "Triceps"].map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={handleAddNewExercise} disabled={!newExerciseName || !newExerciseCategory}>
+              Create Exercise
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="grid gap-4">
         {routines.map((routine) => (
           <Card key={routine.id}>
@@ -361,6 +492,7 @@ export default function WorkoutRoutinesPage() {
         {routines.length === 0 && (
           <p className="text-center text-muted-foreground mt-4">No routines found. Create one!</p>
         )}
+      </div>
       </div>
     </div>
   );

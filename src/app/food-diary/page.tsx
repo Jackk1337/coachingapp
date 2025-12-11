@@ -1324,11 +1324,25 @@ export default function FoodDiaryPage() {
                 <div key={meal.id} className="border-b">
                   {/* Meal Header */}
                   <div className="flex items-center justify-between px-4 py-3 bg-muted/30">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-wrap">
                       <h3 className="text-base font-semibold">Meal {meal.mealNumber}</h3>
                       <span className="text-sm text-muted-foreground">
                         {meal.foods.length} {meal.foods.length === 1 ? 'item' : 'items'}
                       </span>
+                      <div className="flex items-center gap-3 text-sm">
+                        <span className="text-muted-foreground">
+                          <span className="font-semibold text-foreground">{Math.ceil(mealTotalCalories)}</span> cal
+                        </span>
+                        <span className="text-muted-foreground">
+                          <span className="font-semibold text-foreground">{Math.ceil(mealTotalProtein)}</span>g P
+                        </span>
+                        <span className="text-muted-foreground">
+                          <span className="font-semibold text-foreground">{Math.ceil(mealTotalCarbs)}</span>g C
+                        </span>
+                        <span className="text-muted-foreground">
+                          <span className="font-semibold text-foreground">{Math.ceil(mealTotalFat)}</span>g F
+                        </span>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Button
@@ -1348,13 +1362,13 @@ export default function FoodDiaryPage() {
                     <div className="w-full">
                       <Table>
                         <TableHeader>
-                          <TableRow className="border-b">
-                            <TableHead className="font-semibold">Food Name</TableHead>
-                            <TableHead className="text-right font-semibold">Calories</TableHead>
-                            <TableHead className="text-right font-semibold">P</TableHead>
-                            <TableHead className="text-right font-semibold">C</TableHead>
-                            <TableHead className="text-right font-semibold">F</TableHead>
-                            <TableHead className="w-[50px]"></TableHead>
+                          <TableRow className="border-b bg-muted/50">
+                            <TableHead className="font-bold text-sm text-muted-foreground uppercase tracking-wider py-3">Food Name</TableHead>
+                            <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider py-3">Calories</TableHead>
+                            <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider py-3">P</TableHead>
+                            <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider py-3">C</TableHead>
+                            <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider py-3">F</TableHead>
+                            <TableHead className="w-[50px] py-3"></TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -1491,13 +1505,13 @@ export default function FoodDiaryPage() {
                   {getFilteredFoods().length > 0 ? (
                     <Table>
                       <TableHeader>
-                        <TableRow>
-                          <TableHead>Food Name</TableHead>
-                          <TableHead className="text-right">Calories</TableHead>
-                          <TableHead className="text-right">P</TableHead>
-                          <TableHead className="text-right">C</TableHead>
-                          <TableHead className="text-right">F</TableHead>
-                          <TableHead className="text-right">Serving</TableHead>
+                        <TableRow className="bg-muted/50">
+                          <TableHead className="font-bold text-sm text-muted-foreground uppercase tracking-wider">Food Name</TableHead>
+                          <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider">Calories</TableHead>
+                          <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider">P</TableHead>
+                          <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider">C</TableHead>
+                          <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider">F</TableHead>
+                          <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider">Serving</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1532,13 +1546,13 @@ export default function FoodDiaryPage() {
                   {getFilteredFoods().length > 0 ? (
                     <Table>
                       <TableHeader>
-                        <TableRow>
-                          <TableHead>Food Name</TableHead>
-                          <TableHead className="text-right">Calories</TableHead>
-                          <TableHead className="text-right">P</TableHead>
-                          <TableHead className="text-right">C</TableHead>
-                          <TableHead className="text-right">F</TableHead>
-                          <TableHead className="text-right">Serving</TableHead>
+                        <TableRow className="bg-muted/50">
+                          <TableHead className="font-bold text-sm text-muted-foreground uppercase tracking-wider">Food Name</TableHead>
+                          <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider">Calories</TableHead>
+                          <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider">P</TableHead>
+                          <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider">C</TableHead>
+                          <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider">F</TableHead>
+                          <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider">Serving</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1573,13 +1587,13 @@ export default function FoodDiaryPage() {
                   {getFilteredFoods().length > 0 ? (
                     <Table>
                       <TableHeader>
-                        <TableRow>
-                          <TableHead>Food Name</TableHead>
-                          <TableHead className="text-right">Calories</TableHead>
-                          <TableHead className="text-right">P</TableHead>
-                          <TableHead className="text-right">C</TableHead>
-                          <TableHead className="text-right">F</TableHead>
-                          <TableHead className="text-right">Serving</TableHead>
+                        <TableRow className="bg-muted/50">
+                          <TableHead className="font-bold text-sm text-muted-foreground uppercase tracking-wider">Food Name</TableHead>
+                          <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider">Calories</TableHead>
+                          <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider">P</TableHead>
+                          <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider">C</TableHead>
+                          <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider">F</TableHead>
+                          <TableHead className="text-right font-bold text-sm text-muted-foreground uppercase tracking-wider">Serving</TableHead>
                           <TableHead className="w-[80px]"></TableHead>
                         </TableRow>
                       </TableHeader>

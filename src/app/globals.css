@@ -204,3 +204,38 @@
   max-height: 100% !important;
   object-fit: contain !important;
 }
+
+/* Card Barcode Scanner Styles */
+#card-barcode-scanner {
+  position: relative;
+  width: 100%;
+  min-height: 300px;
+  background-color: #000;
+}
+
+#card-barcode-scanner video {
+  width: 100% !important;
+  height: auto !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  display: block !important;
+  background-color: #000 !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+#card-barcode-scanner canvas {
+  display: none !important;
+}
+
+#card-barcode-scanner > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+#card-barcode-scanner > div > video {
+  width: 100% !important;
+  height: auto !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+}

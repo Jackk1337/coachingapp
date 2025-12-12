@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Html5Qrcode, Html5QrcodeScanType } from "html5-qrcode";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
-import { collection, query, where, onSnapshot, doc, setDoc, addDoc, getDocs, Timestamp } from "firebase/firestore";
+import { collection, query, where, onSnapshot, doc, setDoc, addDoc, getDocs, getDoc, Timestamp } from "firebase/firestore";
 import { format, addDays, subDays } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -117,7 +117,14 @@ export default function FoodDiaryPage() {
   const [adjustedServingSize, setAdjustedServingSize] = useState<string>("");
   const [editServingSizeDialogOpen, setEditServingSizeDialogOpen] = useState(false);
   const [editingFoodItem, setEditingFoodItem] = useState<{ mealId: string; foodIndex: number; food: Food } | null>(null);
-  const [editServingSize, setEditServingSize] = useState<string>("");
+  const [editMealFoodData, setEditMealFoodData] = useState({
+    name: "",
+    caloriesPer100g: "",
+    servingSize: "",
+    proteinPer100g: "",
+    carbPer100g: "",
+    fatPer100g: "",
+  });
   const [barcodeDialogOpen, setBarcodeDialogOpen] = useState(false);
   const [barcodeInput, setBarcodeInput] = useState<string>("");
   const [barcodeSearchLoading, setBarcodeSearchLoading] = useState(false);
@@ -284,7 +291,7 @@ export default function FoodDiaryPage() {
   };
 
   // Handle editing serving size of an existing food item
-  const handleEditFoodServingSize = (mealId: string, foodIndex: number) => {
+  const handleEditFoodItem = (mealId: string, foodIndex: number) => {
     if (!foodDiary) return;
     
     const meal = foodDiary.meals.find(m => m.id === mealId);
@@ -292,15 +299,40 @@ export default function FoodDiaryPage() {
     
     const food = meal.foods[foodIndex];
     setEditingFoodItem({ mealId, foodIndex, food });
-    setEditServingSize(food.servingSize?.toString() || "100");
+    setEditMealFoodData({
+      name: food.name || "",
+      caloriesPer100g: food.caloriesPer100g?.toString() || "",
+      servingSize: food.servingSize?.toString() || "100",
+      proteinPer100g: food.proteinPer100g?.toString() || "",
+      carbPer100g: food.carbPer100g?.toString() || "",
+      fatPer100g: food.fatPer100g?.toString() || "",
+    });
     setEditServingSizeDialogOpen(true);
   };
 
-  // Handle updating food item serving size
-  const handleUpdateFoodServingSize = async () => {
+  const handleEditMealFoodChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEditMealFoodData((prev) => ({
+      ...prev,
+      [e.target.name]: e.target.value,
+    }));
+  };
+
+  // Handle updating food item
+  const handleUpdateFoodItem = async () => {
     if (!user || !docId || !foodDiary || !editingFoodItem) return;
 
-    const servingSize = Number(editServingSize) || editingFoodItem.food.servingSize || 100;
+    const name = editMealFoodData.name.trim();
+    const servingSize = Number(editMealFoodData.servingSize) || 100;
+    const proteinPer100g = Number(editMealFoodData.proteinPer100g) || 0;
+    const carbPer100g = Number(editMealFoodData.carbPer100g) || 0;
+    const fatPer100g = Number(editMealFoodData.fatPer100g) || 0;
+    const manualCalories = Number(editMealFoodData.caloriesPer100g) || 0;
+
+    if (!name) {
+      toast.error("Food name is required");
+      return;
+    }
+
     if (servingSize <= 0) {
       toast.error("Serving size must be greater than 0");
       return;
@@ -308,17 +340,25 @@ export default function FoodDiaryPage() {
 
     setLoading(true);
     try {
-      // Calculate adjusted values based on new serving size
-      const originalFood = editingFoodItem.food;
+      // Calculate calories from macros if not provided
+      const calculatedCaloriesPer100g = calculateCaloriesFromMacros(proteinPer100g, carbPer100g, fatPer100g);
+      const caloriesPer100g = manualCalories > 0 ? manualCalories : calculatedCaloriesPer100g;
+
+      // Calculate values for the serving size
       const ratio = servingSize / 100;
       
       const updatedFood: Food = {
-        ...originalFood,
-        caloriesPerServing: originalFood.caloriesPer100g * ratio,
-        proteinPerServing: originalFood.proteinPer100g * ratio,
-        carbsPerServing: originalFood.carbPer100g * ratio,
-        fatPerServing: originalFood.fatPer100g * ratio,
+        ...editingFoodItem.food,
+        name: name,
+        caloriesPer100g: caloriesPer100g,
+        proteinPer100g: proteinPer100g,
+        carbPer100g: carbPer100g,
+        fatPer100g: fatPer100g,
         servingSize: servingSize,
+        caloriesPerServing: caloriesPer100g * ratio,
+        proteinPerServing: proteinPer100g * ratio,
+        carbsPerServing: carbPer100g * ratio,
+        fatPerServing: fatPer100g * ratio,
       };
 
       // Find the meal and update the food item
@@ -364,13 +404,53 @@ export default function FoodDiaryPage() {
 
       await setDoc(doc(db, "food_diary", docId), updateData, { merge: true });
       
-      toast.success(`${updatedFood.name} serving size updated`);
+      // Also update the food_library entry if this food exists in the library
+      // Only update if the food has an id and belongs to the user or came from API
+      if (editingFoodItem.food.id && (editingFoodItem.food.userId === user.uid || editingFoodItem.food.source)) {
+        try {
+          const foodLibraryRef = doc(db, "food_library", editingFoodItem.food.id);
+          const foodLibrarySnap = await getDoc(foodLibraryRef);
+          
+          if (foodLibrarySnap.exists()) {
+            // Update the food_library entry with corrected values
+            // Note: We update per-100g values and default serving size, but keep per-serving values calculated
+            const foodLibraryData = {
+              name: name,
+              caloriesPer100g: caloriesPer100g,
+              proteinPer100g: proteinPer100g,
+              carbPer100g: carbPer100g,
+              fatPer100g: fatPer100g,
+              servingSize: servingSize, // Update default serving size
+              // Recalculate per-serving values based on default serving size
+              caloriesPerServing: caloriesPer100g * (servingSize / 100),
+              proteinPerServing: proteinPer100g * (servingSize / 100),
+              carbsPerServing: carbPer100g * (servingSize / 100),
+              fatPerServing: fatPer100g * (servingSize / 100),
+              updatedAt: Timestamp.now(),
+            };
+            
+            await setDoc(foodLibraryRef, foodLibraryData, { merge: true });
+          }
+        } catch (libraryError) {
+          console.error("Error updating food library:", libraryError);
+          // Don't fail the whole operation if library update fails
+        }
+      }
+      
+      toast.success(`${updatedFood.name} updated`);
       setEditServingSizeDialogOpen(false);
       setEditingFoodItem(null);
-      setEditServingSize("");
+      setEditMealFoodData({
+        name: "",
+        caloriesPer100g: "",
+        servingSize: "",
+        proteinPer100g: "",
+        carbPer100g: "",
+        fatPer100g: "",
+      });
     } catch (error) {
-      console.error("Error updating food serving size:", error);
-      toast.error("Failed to update serving size");
+      console.error("Error updating food item:", error);
+      toast.error("Failed to update food item");
     } finally {
       setLoading(false);
     }
@@ -884,13 +964,24 @@ export default function FoodDiaryPage() {
         const foodDoc = querySnapshot.docs[0];
         const foodData = { id: foodDoc.id, ...foodDoc.data() } as Food;
         
-        // Close barcode dialog and food selection dialog, then open serving size dialog
+        // Close barcode dialog and food selection dialog, then open edit food item dialog
         setBarcodeDialogOpen(false);
         setBarcodeInput("");
         if (foodSelectionOpen) {
           setFoodSelectionOpen(false);
         }
-        handleFoodSelection(foodData);
+        // Populate edit meal food data for the dialog
+        setEditMealFoodData({
+          name: foodData.name || "",
+          caloriesPer100g: foodData.caloriesPer100g?.toString() || "",
+          servingSize: foodData.servingSize?.toString() || "100",
+          proteinPer100g: foodData.proteinPer100g?.toString() || "",
+          carbPer100g: foodData.carbPer100g?.toString() || "",
+          fatPer100g: foodData.fatPer100g?.toString() || "",
+        });
+        // Use apiFoodData to store the food for adding to meal
+        setApiFoodData(foodData);
+        setApiFoodPreviewOpen(true);
         toast.success("Food found in your library!");
         } else {
           // Not found locally, try Open Food Facts API
@@ -936,10 +1027,19 @@ export default function FoodDiaryPage() {
               const docRef = await addDoc(collection(db, "food_library"), foodData);
               const savedFood: Food = { id: docRef.id, ...foodData };
 
-              // Show preview dialog with serving size selection
+              // Show edit food item dialog instead of preview
               setBarcodeDialogOpen(false);
               setBarcodeInput("");
               setApiFoodData({ ...savedFood, missingFields: apiFood.missingFields });
+              // Populate edit meal food data for the dialog
+              setEditMealFoodData({
+                name: savedFood.name || "",
+                caloriesPer100g: savedFood.caloriesPer100g?.toString() || "",
+                servingSize: savedFood.servingSize?.toString() || "100",
+                proteinPer100g: savedFood.proteinPer100g?.toString() || "",
+                carbPer100g: savedFood.carbPer100g?.toString() || "",
+                fatPer100g: savedFood.fatPer100g?.toString() || "",
+              });
               setApiFoodPreviewOpen(true);
               toast.success("Food found and saved to your library!");
             } catch (error) {
@@ -1092,7 +1192,18 @@ export default function FoodDiaryPage() {
   const handleAddApiFoodToMeal = async () => {
     if (!user || !docId || !foodDiary || !selectedMealId || !apiFoodData || !apiFoodData.id) return;
 
-    const servingSize = Number(apiFoodData.servingSize) || 100;
+    const name = editMealFoodData.name.trim();
+    const servingSize = Number(editMealFoodData.servingSize) || 100;
+    const proteinPer100g = Number(editMealFoodData.proteinPer100g) || 0;
+    const carbPer100g = Number(editMealFoodData.carbPer100g) || 0;
+    const fatPer100g = Number(editMealFoodData.fatPer100g) || 0;
+    const manualCalories = Number(editMealFoodData.caloriesPer100g) || 0;
+
+    if (!name) {
+      toast.error("Food name is required");
+      return;
+    }
+
     if (servingSize <= 0) {
       toast.error("Serving size must be greater than 0");
       return;
@@ -1100,32 +1211,25 @@ export default function FoodDiaryPage() {
 
     setLoading(true);
     try {
-      // Update the food in database if values were edited
-      const protein = apiFoodData.proteinPer100g || 0;
-      const carbs = apiFoodData.carbPer100g || 0;
-      const fat = apiFoodData.fatPer100g || 0;
-      const caloriesPer100g = apiFoodData.caloriesPer100g || 0;
+      // Calculate calories from macros if not provided
+      const calculatedCaloriesPer100g = calculateCaloriesFromMacros(proteinPer100g, carbPer100g, fatPer100g);
+      const caloriesPer100g = manualCalories > 0 ? manualCalories : calculatedCaloriesPer100g;
 
-      // Calculate values per serving (using default 100g for database storage)
+      // Update the food in database with edited values
       const defaultServingRatio = 100 / 100;
-      const caloriesPerServingForDb = caloriesPer100g * defaultServingRatio;
-      const proteinPerServingForDb = protein * defaultServingRatio;
-      const carbsPerServingForDb = carbs * defaultServingRatio;
-      const fatPerServingForDb = fat * defaultServingRatio;
-
       const foodData: any = {
         userId: user.uid,
-        name: apiFoodData.name || "",
+        name: name,
         caloriesPer100g: caloriesPer100g,
         servingSize: 100, // Store per 100g in database
-        proteinPer100g: protein,
-        carbPer100g: carbs,
-        fatPer100g: fat,
-        caloriesPerServing: caloriesPerServingForDb,
-        proteinPerServing: proteinPerServingForDb,
-        carbsPerServing: carbsPerServingForDb,
-        fatPerServing: fatPerServingForDb,
-        source: "API",
+        proteinPer100g: proteinPer100g,
+        carbPer100g: carbPer100g,
+        fatPer100g: fatPer100g,
+        caloriesPerServing: caloriesPer100g * defaultServingRatio,
+        proteinPerServing: proteinPer100g * defaultServingRatio,
+        carbsPerServing: carbPer100g * defaultServingRatio,
+        fatPerServing: fatPer100g * defaultServingRatio,
+        source: apiFoodData.source || "User Submission", // Preserve original source or default to User Submission
         barcode: apiFoodData.barcode || "",
         updatedAt: Timestamp.now(),
       };
@@ -1136,13 +1240,18 @@ export default function FoodDiaryPage() {
       // Calculate adjusted values based on user's selected serving size
       const ratio = servingSize / 100;
       const caloriesPerServing = caloriesPer100g * ratio;
-      const proteinPerServing = protein * ratio;
-      const carbsPerServing = carbs * ratio;
-      const fatPerServing = fat * ratio;
+      const proteinPerServing = proteinPer100g * ratio;
+      const carbsPerServing = carbPer100g * ratio;
+      const fatPerServing = fatPer100g * ratio;
 
       // Create food object with adjusted values for the meal
       const adjustedFood: Food = {
         ...apiFoodData,
+        name: name,
+        caloriesPer100g: caloriesPer100g,
+        proteinPer100g: proteinPer100g,
+        carbPer100g: carbPer100g,
+        fatPer100g: fatPer100g,
         caloriesPerServing: caloriesPerServing,
         proteinPerServing: proteinPerServing,
         carbsPerServing: carbsPerServing,
@@ -1197,9 +1306,17 @@ export default function FoodDiaryPage() {
         updateRecentFoods(apiFoodData.id);
       }
       
-      toast.success(`${apiFoodData.name} added to meal`);
+      toast.success(`${adjustedFood.name} added to meal`);
       setApiFoodPreviewOpen(false);
       setApiFoodData(null);
+      setEditMealFoodData({
+        name: "",
+        caloriesPer100g: "",
+        servingSize: "",
+        proteinPer100g: "",
+        carbPer100g: "",
+        fatPer100g: "",
+      });
       setFoodSelectionOpen(false);
       setSelectedMealId(null);
     } catch (error) {
@@ -1294,9 +1411,9 @@ export default function FoodDiaryPage() {
       {/* Calories Remaining - MyFitnessPal Style */}
       <div className="px-4 py-4 border-b bg-background">
         <div className="mb-2">
-          <h2 className="text-sm font-semibold text-muted-foreground">Calories Remaining</h2>
+          <h2 className="text-sm font-semibold text-muted-foreground text-center">Calories Remaining</h2>
         </div>
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center justify-center gap-2 text-sm">
           <span className="font-semibold">{Math.ceil(calorieGoal).toLocaleString()}</span>
           <span className="text-muted-foreground">Goal</span>
           <span className="mx-1">-</span>
@@ -1308,6 +1425,71 @@ export default function FoodDiaryPage() {
           </span>
           <span className="text-muted-foreground">Remaining</span>
         </div>
+
+        {/* Macro Progress Bars */}
+        {(proteinGoal > 0 || carbGoal > 0 || fatGoal > 0) && (
+          <div className="mt-4 space-y-3">
+            {/* Protein Progress */}
+            {proteinGoal > 0 && (
+              <div className="space-y-1">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-muted-foreground">Protein</span>
+                  <span className="font-medium">
+                    {Math.ceil(consumedProtein)}g / {Math.ceil(proteinGoal)}g
+                  </span>
+                </div>
+                <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-[#8884d8] transition-all"
+                    style={{
+                      width: `${Math.min(100, Math.max(0, (consumedProtein / proteinGoal) * 100))}%`
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Carb Progress */}
+            {carbGoal > 0 && (
+              <div className="space-y-1">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-muted-foreground">Carbs</span>
+                  <span className="font-medium">
+                    {Math.ceil(consumedCarbs)}g / {Math.ceil(carbGoal)}g
+                  </span>
+                </div>
+                <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-[#82ca9d] transition-all"
+                    style={{
+                      width: `${Math.min(100, Math.max(0, (consumedCarbs / carbGoal) * 100))}%`
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Fat Progress */}
+            {fatGoal > 0 && (
+              <div className="space-y-1">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-muted-foreground">Fat</span>
+                  <span className="font-medium">
+                    {Math.ceil(consumedFat)}g / {Math.ceil(fatGoal)}g
+                  </span>
+                </div>
+                <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-[#ffc658] transition-all"
+                    style={{
+                      width: `${Math.min(100, Math.max(0, (consumedFat / fatGoal) * 100))}%`
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Meals Section - Full Width */}
@@ -1376,7 +1558,7 @@ export default function FoodDiaryPage() {
                             <TableRow 
                               key={index}
                               className="cursor-pointer hover:bg-accent/50 transition-colors border-b"
-                              onClick={() => handleEditFoodServingSize(meal.id, index)}
+                              onClick={() => handleEditFoodItem(meal.id, index)}
                             >
                               <TableCell className="font-medium py-3">{food.name}</TableCell>
                               <TableCell className="text-right py-3">{Math.ceil(food.caloriesPerServing)}</TableCell>
@@ -2208,107 +2390,189 @@ export default function FoodDiaryPage() {
         setEditServingSizeDialogOpen(open);
         if (!open) {
           setEditingFoodItem(null);
-          setEditServingSize("");
+          setEditMealFoodData({
+            name: "",
+            caloriesPer100g: "",
+            servingSize: "",
+            proteinPer100g: "",
+            carbPer100g: "",
+            fatPer100g: "",
+          });
         }
       }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit Serving Size</DialogTitle>
+            <DialogTitle>Edit Food Item</DialogTitle>
           </DialogHeader>
           
           {editingFoodItem && (
-            <div className="space-y-4">
-              <div>
-                <p className="font-semibold text-lg mb-2">{editingFoodItem.food.name}</p>
-                <p className="text-sm text-muted-foreground">
-                  Current serving: {Math.ceil(editingFoodItem.food.servingSize || 100)}g
-                </p>
-              </div>
-
+            <form onSubmit={(e) => { e.preventDefault(); handleUpdateFoodItem(); }} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="editServingSize">Serving Size (grams) *</Label>
+                <Label htmlFor="editMealFoodName">Food Name *</Label>
                 <Input
-                  id="editServingSize"
-                  type="number"
-                  step="0.1"
-                  min="0.1"
-                  value={editServingSize}
-                  onChange={(e) => setEditServingSize(e.target.value)}
-                  placeholder="Enter serving size"
+                  id="editMealFoodName"
+                  name="name"
+                  value={editMealFoodData.name}
+                  onChange={handleEditMealFoodChange}
+                  placeholder="e.g. Chicken Breast"
+                  required
                 />
               </div>
 
-              {editServingSize && Number(editServingSize) > 0 && (
-                <div className="p-4 bg-muted/30 rounded-lg space-y-2 border">
-                  <p className="text-sm font-semibold mb-2">Updated Nutritional Values:</p>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">Calories</p>
-                      <p className="font-semibold">
-                        {Math.ceil(calculateAdjustedValues(editingFoodItem.food, Number(editServingSize)).caloriesPerServing)}
+              <div className="space-y-2">
+                <Label htmlFor="editMealFoodServingSize">Serving Size (grams) *</Label>
+                <Input
+                  id="editMealFoodServingSize"
+                  name="servingSize"
+                  type="number"
+                  step="0.1"
+                  value={editMealFoodData.servingSize}
+                  onChange={handleEditMealFoodChange}
+                  placeholder="e.g. 100"
+                  required
+                />
+              </div>
+
+              <div className="p-4 bg-muted/30 rounded-lg space-y-4">
+                <p className="text-sm font-semibold">Macros per 100g</p>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="editMealFoodProtein">Protein (g)</Label>
+                  <Input
+                    id="editMealFoodProtein"
+                    name="proteinPer100g"
+                    type="number"
+                    step="0.1"
+                    value={editMealFoodData.proteinPer100g}
+                    onChange={handleEditMealFoodChange}
+                    placeholder="e.g. 25"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="editMealFoodCarbs">Carbs (g)</Label>
+                  <Input
+                    id="editMealFoodCarbs"
+                    name="carbPer100g"
+                    type="number"
+                    step="0.1"
+                    value={editMealFoodData.carbPer100g}
+                    onChange={handleEditMealFoodChange}
+                    placeholder="e.g. 0"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="editMealFoodFat">Fat (g)</Label>
+                  <Input
+                    id="editMealFoodFat"
+                    name="fatPer100g"
+                    type="number"
+                    step="0.1"
+                    value={editMealFoodData.fatPer100g}
+                    onChange={handleEditMealFoodChange}
+                    placeholder="e.g. 3"
+                  />
+                </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="editMealFoodCalories">Calories per 100g (optional)</Label>
+                    <Input
+                      id="editMealFoodCalories"
+                      name="caloriesPer100g"
+                      type="number"
+                      step="0.1"
+                      value={editMealFoodData.caloriesPer100g}
+                      onChange={handleEditMealFoodChange}
+                      placeholder="Auto-calculated from macros"
+                    />
+                  </div>
+
+                {/* Show calculated values */}
+                {(editMealFoodData.proteinPer100g || editMealFoodData.carbPer100g || editMealFoodData.fatPer100g) && (
+                  <div className="pt-3 border-t space-y-2">
+                    <p className="text-xs font-semibold">Calculated Values:</p>
+                    <div className="text-xs space-y-1">
+                      <p className="text-muted-foreground">
+                        Calories per 100g: {Math.ceil(calculateCaloriesFromMacros(
+                          Number(editMealFoodData.proteinPer100g) || 0,
+                          Number(editMealFoodData.carbPer100g) || 0,
+                          Number(editMealFoodData.fatPer100g) || 0
+                        ))} cal
                       </p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Protein</p>
-                      <p className="font-semibold">
-                        {Math.ceil(calculateAdjustedValues(editingFoodItem.food, Number(editServingSize)).proteinPerServing)}g
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Carbs</p>
-                      <p className="font-semibold">
-                        {Math.ceil(calculateAdjustedValues(editingFoodItem.food, Number(editServingSize)).carbsPerServing)}g
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Fat</p>
-                      <p className="font-semibold">
-                        {Math.ceil(calculateAdjustedValues(editingFoodItem.food, Number(editServingSize)).fatPerServing)}g
-                      </p>
+                      {editMealFoodData.servingSize && (
+                        <p className="text-muted-foreground">
+                          Calories per serving ({Math.ceil(Number(editMealFoodData.servingSize))}g): {
+                            Math.ceil(
+                              calculateCaloriesFromMacros(
+                                Number(editMealFoodData.proteinPer100g) || 0,
+                                Number(editMealFoodData.carbPer100g) || 0,
+                                Number(editMealFoodData.fatPer100g) || 0
+                              ) * (Number(editMealFoodData.servingSize) / 100)
+                            )
+                          } cal
+                        </p>
+                      )}
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
               <div className="flex gap-2">
                 <Button
+                  type="button"
                   variant="outline"
                   className="flex-1"
                   onClick={() => {
                     setEditServingSizeDialogOpen(false);
                     setEditingFoodItem(null);
-                    setEditServingSize("");
+                    setEditMealFoodData({
+                      name: "",
+                      caloriesPer100g: "",
+                      servingSize: "",
+                      proteinPer100g: "",
+                      carbPer100g: "",
+                      fatPer100g: "",
+                    });
                   }}
                 >
                   Cancel
                 </Button>
                 <Button
+                  type="submit"
                   className="flex-1"
-                  onClick={handleUpdateFoodServingSize}
-                  disabled={loading || !editServingSize || Number(editServingSize) <= 0}
+                  disabled={loading || !editMealFoodData.name || !editMealFoodData.servingSize}
                 >
-                  {loading ? "Updating..." : "Update"}
+                  {loading ? "Updating..." : "Update Food"}
                 </Button>
               </div>
-            </div>
+            </form>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* API Food Preview Dialog */}
+      {/* API Food Preview Dialog - Using Edit Food Item Structure */}
       <Dialog open={apiFoodPreviewOpen} onOpenChange={(open) => {
         setApiFoodPreviewOpen(open);
         if (!open) {
           setApiFoodData(null);
+          setEditMealFoodData({
+            name: "",
+            caloriesPer100g: "",
+            servingSize: "",
+            proteinPer100g: "",
+            carbPer100g: "",
+            fatPer100g: "",
+          });
         }
       }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Food Found from Open Food Facts</DialogTitle>
+            <DialogTitle>Edit Food Item</DialogTitle>
           </DialogHeader>
           
           {apiFoodData && (
-            <div className="space-y-4">
+            <form onSubmit={(e) => { e.preventDefault(); handleAddApiFoodToMeal(); }} className="space-y-4">
               {apiFoodData.missingFields && apiFoodData.missingFields.length > 0 && (
                 <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                   <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-200 mb-1">
@@ -2321,157 +2585,146 @@ export default function FoodDiaryPage() {
                 </div>
               )}
 
-              <div className="space-y-3">
-                <div>
-                  <Label>Food Name</Label>
-                  <Input
-                    value={apiFoodData.name || ""}
-                    onChange={(e) => setApiFoodData({ ...apiFoodData, name: e.target.value })}
-                    placeholder="Food name"
-                  />
-                </div>
-
-                <div>
-                  <Label>Barcode</Label>
-                  <Input
-                    value={apiFoodData.barcode || ""}
-                    disabled
-                    className="bg-muted"
-                  />
-                </div>
-
-                <div className="p-4 bg-muted/30 rounded-lg space-y-3 border">
-                  <p className="text-sm font-semibold">Nutritional Values per 100g</p>
-                  
-                  <div>
-                    <Label>Calories per 100g</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={apiFoodData.caloriesPer100g || 0}
-                      onChange={(e) => setApiFoodData({ 
-                        ...apiFoodData, 
-                        caloriesPer100g: Number(e.target.value) || 0 
-                      })}
-                      placeholder="0"
-                    />
-                  </div>
-
-                  <div>
-                    <Label>Protein (g)</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={apiFoodData.proteinPer100g || 0}
-                      onChange={(e) => setApiFoodData({ 
-                        ...apiFoodData, 
-                        proteinPer100g: Number(e.target.value) || 0 
-                      })}
-                      placeholder="0"
-                    />
-                  </div>
-
-                  <div>
-                    <Label>Carbs (g)</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={apiFoodData.carbPer100g || 0}
-                      onChange={(e) => setApiFoodData({ 
-                        ...apiFoodData, 
-                        carbPer100g: Number(e.target.value) || 0 
-                      })}
-                      placeholder="0"
-                    />
-                  </div>
-
-                  <div>
-                    <Label>Fat (g)</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={apiFoodData.fatPer100g || 0}
-                      onChange={(e) => setApiFoodData({ 
-                        ...apiFoodData, 
-                        fatPer100g: Number(e.target.value) || 0 
-                      })}
-                      placeholder="0"
-                    />
-                  </div>
-                </div>
-
-                <div className="p-4 bg-primary/5 rounded-lg space-y-3 border border-primary/20">
-                  <p className="text-sm font-semibold">Serving Size</p>
-                  
-                  <div>
-                    <Label>Serving Size (grams) *</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      min="0.1"
-                      value={apiFoodData.servingSize || 100}
-                      onChange={(e) => setApiFoodData({ 
-                        ...apiFoodData, 
-                        servingSize: Number(e.target.value) || 100 
-                      })}
-                      placeholder="Enter serving size"
-                    />
-                  </div>
-
-                  {apiFoodData.servingSize && apiFoodData.servingSize > 0 && (
-                    <div className="pt-2 border-t space-y-2">
-                      <p className="text-xs font-semibold">Calculated Values for This Serving:</p>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <p className="text-muted-foreground">Calories</p>
-                          <p className="font-semibold">
-                            {Math.ceil(((apiFoodData.caloriesPer100g || 0) * (apiFoodData.servingSize || 100)) / 100)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Protein</p>
-                          <p className="font-semibold">
-                            {Math.ceil(((apiFoodData.proteinPer100g || 0) * (apiFoodData.servingSize || 100)) / 100)}g
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Carbs</p>
-                          <p className="font-semibold">
-                            {Math.ceil(((apiFoodData.carbPer100g || 0) * (apiFoodData.servingSize || 100)) / 100)}g
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Fat</p>
-                          <p className="font-semibold">
-                            {Math.ceil(((apiFoodData.fatPer100g || 0) * (apiFoodData.servingSize || 100)) / 100)}g
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => {
-                      setApiFoodPreviewOpen(false);
-                      setApiFoodData(null);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    className="flex-1"
-                    onClick={handleAddApiFoodToMeal}
-                    disabled={loading || !apiFoodData.name || !apiFoodData.name.trim() || !apiFoodData.servingSize || apiFoodData.servingSize <= 0}
-                  >
-                    {loading ? "Adding..." : "Add to Meal"}
-                  </Button>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="apiFoodName">Food Name *</Label>
+                <Input
+                  id="apiFoodName"
+                  name="name"
+                  value={editMealFoodData.name}
+                  onChange={handleEditMealFoodChange}
+                  placeholder="e.g. Chicken Breast"
+                  required
+                />
               </div>
-            </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="apiFoodServingSize">Serving Size (grams) *</Label>
+                <Input
+                  id="apiFoodServingSize"
+                  name="servingSize"
+                  type="number"
+                  step="0.1"
+                  value={editMealFoodData.servingSize}
+                  onChange={handleEditMealFoodChange}
+                  placeholder="e.g. 100"
+                  required
+                />
+              </div>
+
+              <div className="p-4 bg-muted/30 rounded-lg space-y-4">
+                <p className="text-sm font-semibold">Macros per 100g</p>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="apiFoodProtein">Protein (g)</Label>
+                  <Input
+                    id="apiFoodProtein"
+                    name="proteinPer100g"
+                    type="number"
+                    step="0.1"
+                    value={editMealFoodData.proteinPer100g}
+                    onChange={handleEditMealFoodChange}
+                    placeholder="e.g. 25"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="apiFoodCarbs">Carbs (g)</Label>
+                  <Input
+                    id="apiFoodCarbs"
+                    name="carbPer100g"
+                    type="number"
+                    step="0.1"
+                    value={editMealFoodData.carbPer100g}
+                    onChange={handleEditMealFoodChange}
+                    placeholder="e.g. 0"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="apiFoodFat">Fat (g)</Label>
+                  <Input
+                    id="apiFoodFat"
+                    name="fatPer100g"
+                    type="number"
+                    step="0.1"
+                    value={editMealFoodData.fatPer100g}
+                    onChange={handleEditMealFoodChange}
+                    placeholder="e.g. 3"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="apiFoodCalories">Calories per 100g (optional)</Label>
+                  <Input
+                    id="apiFoodCalories"
+                    name="caloriesPer100g"
+                    type="number"
+                    step="0.1"
+                    value={editMealFoodData.caloriesPer100g}
+                    onChange={handleEditMealFoodChange}
+                    placeholder="Auto-calculated from macros"
+                  />
+                </div>
+
+                {/* Show calculated values */}
+                {(editMealFoodData.proteinPer100g || editMealFoodData.carbPer100g || editMealFoodData.fatPer100g) && (
+                  <div className="pt-3 border-t space-y-2">
+                    <p className="text-xs font-semibold">Calculated Values:</p>
+                    <div className="text-xs space-y-1">
+                      <p className="text-muted-foreground">
+                        Calories per 100g: {Math.ceil(calculateCaloriesFromMacros(
+                          Number(editMealFoodData.proteinPer100g) || 0,
+                          Number(editMealFoodData.carbPer100g) || 0,
+                          Number(editMealFoodData.fatPer100g) || 0
+                        ))} cal
+                      </p>
+                      {editMealFoodData.servingSize && (
+                        <p className="text-muted-foreground">
+                          Calories per serving ({Math.ceil(Number(editMealFoodData.servingSize))}g): {
+                            Math.ceil(
+                              calculateCaloriesFromMacros(
+                                Number(editMealFoodData.proteinPer100g) || 0,
+                                Number(editMealFoodData.carbPer100g) || 0,
+                                Number(editMealFoodData.fatPer100g) || 0
+                              ) * (Number(editMealFoodData.servingSize) / 100)
+                            )
+                          } cal
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setApiFoodPreviewOpen(false);
+                    setApiFoodData(null);
+                    setEditMealFoodData({
+                      name: "",
+                      caloriesPer100g: "",
+                      servingSize: "",
+                      proteinPer100g: "",
+                      carbPer100g: "",
+                      fatPer100g: "",
+                    });
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1"
+                  disabled={loading || !editMealFoodData.name || !editMealFoodData.servingSize}
+                >
+                  {loading ? "Adding..." : "Add to Meal"}
+                </Button>
+              </div>
+            </form>
           )}
         </DialogContent>
       </Dialog>

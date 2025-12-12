@@ -8,7 +8,7 @@ import { collection, query, where, getDocs, doc, getDoc } from "firebase/firesto
 import { format, startOfWeek, endOfWeek, eachDayOfInterval } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dumbbell, Utensils, Activity, CalendarCheck, TrendingUp, User } from "lucide-react";
+import { Dumbbell, Utensils, Activity, CalendarCheck, TrendingUp, User, CreditCard } from "lucide-react";
 
 interface WeeklyStats {
   avgCaloriesPerDay: number;
@@ -37,6 +37,7 @@ export default function Home() {
     { name: "Cardio Log", href: "/cardio-log", icon: Activity },
     { name: "Daily Checkin", href: "/daily-checkin", icon: CalendarCheck },
     { name: "Progress", href: "/progress", icon: TrendingUp },
+    { name: "Cards", href: "/cards", icon: CreditCard },
     { name: "Profile", href: "/profile", icon: User },
   ];
 

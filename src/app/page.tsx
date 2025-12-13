@@ -8,7 +8,7 @@ import { collection, query, where, getDocs, doc, getDoc } from "firebase/firesto
 import { format, startOfWeek, endOfWeek, eachDayOfInterval } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dumbbell, Utensils, Activity, CalendarCheck, TrendingUp, User, CreditCard } from "lucide-react";
+import { Dumbbell, Utensils, Activity, CalendarCheck, TrendingUp, User, CreditCard, ChevronDown, ChevronUp } from "lucide-react";
 
 interface WeeklyStats {
   avgCaloriesPerDay: number;
@@ -30,6 +30,7 @@ export default function Home() {
   const { user, profile } = useAuth();
   const [weeklyStats, setWeeklyStats] = useState<WeeklyStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [macroOverviewExpanded, setMacroOverviewExpanded] = useState(false);
 
   const menuItems = [
     { name: "Workout Log", href: "/workout-log", icon: Dumbbell },
@@ -170,51 +171,94 @@ export default function Home() {
 
       {/* Weekly Overview Section */}
       {user && !loading && weeklyStats && (
-        <div className="w-full max-w-md mb-6">
+        <div className="w-full max-w-md mb-6 space-y-4">
+          {/* Workout Sessions - Prominent Card */}
+          {(profile?.goals?.workoutSessionsPerWeek ?? 0) > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Dumbbell className="h-5 w-5" />
+                  Workout Sessions
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">This Week</span>
+                    <span className="font-semibold text-lg">
+                      {weeklyStats.workoutCompleted} / {weeklyStats.workoutCompleted + weeklyStats.workoutRemaining}
+                    </span>
+                  </div>
+                  {weeklyStats.workoutRemaining > 0 ? (
+                    <div className="text-xs text-muted-foreground">
+                      {weeklyStats.workoutRemaining} remaining
+                    </div>
+                  ) : (
+                    <div className="text-xs text-green-500 font-medium">
+                      Goal achieved! 🎉
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Cardio Sessions - Prominent Card */}
+          {(profile?.goals?.cardioSessionsPerWeek ?? 0) > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5" />
+                  Cardio Sessions
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">This Week</span>
+                    <span className="font-semibold text-lg">
+                      {weeklyStats.cardioCompleted} / {weeklyStats.cardioCompleted + weeklyStats.cardioRemaining}
+                    </span>
+                  </div>
+                  {weeklyStats.cardioRemaining > 0 ? (
+                    <div className="text-xs text-muted-foreground">
+                      {weeklyStats.cardioRemaining} remaining
+                    </div>
+                  ) : (
+                    <div className="text-xs text-green-500 font-medium">
+                      Goal achieved! 🎉
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Weekly Macro Overview - Collapsible Card */}
           <Card>
-            <CardHeader>
-              <CardTitle>Weekly Overview</CardTitle>
+            <CardHeader 
+              className="cursor-pointer hover:bg-muted/50 transition-colors"
+              onClick={() => setMacroOverviewExpanded(!macroOverviewExpanded)}
+            >
+              <CardTitle className="flex items-center justify-between">
+                <span>Weekly Macro Overview</span>
+                {macroOverviewExpanded ? (
+                  <ChevronUp className="h-5 w-5" />
+                ) : (
+                  <ChevronDown className="h-5 w-5" />
+                )}
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Average Calories */}
-              <div className="space-y-1">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Average Calories/Day</span>
-                  <span className="font-semibold">{weeklyStats.avgCaloriesPerDay.toLocaleString()} cal</span>
-                </div>
-              </div>
-
-              {/* Workout Sessions */}
-              <div className="space-y-1">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Workout Sessions</span>
-                  <span className="font-semibold">
-                    {weeklyStats.workoutCompleted} / {weeklyStats.workoutCompleted + weeklyStats.workoutRemaining || weeklyStats.workoutCompleted}
-                  </span>
-                </div>
-                {weeklyStats.workoutCompleted + weeklyStats.workoutRemaining > 0 && (
-                  <div className="text-xs text-muted-foreground">
-                    {weeklyStats.workoutRemaining > 0 ? `${weeklyStats.workoutRemaining} remaining` : "Goal achieved!"}
+            {macroOverviewExpanded && (
+              <CardContent className="space-y-4">
+                {/* Average Calories */}
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Average Calories/Day</span>
+                    <span className="font-semibold">{weeklyStats.avgCaloriesPerDay.toLocaleString()} cal</span>
                   </div>
-                )}
-              </div>
-
-              {/* Cardio Sessions */}
-              <div className="space-y-1">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Cardio Sessions</span>
-                  <span className="font-semibold">
-                    {weeklyStats.cardioCompleted} / {weeklyStats.cardioCompleted + weeklyStats.cardioRemaining || weeklyStats.cardioCompleted}
-                  </span>
                 </div>
-                {weeklyStats.cardioCompleted + weeklyStats.cardioRemaining > 0 && (
-                  <div className="text-xs text-muted-foreground">
-                    {weeklyStats.cardioRemaining > 0 ? `${weeklyStats.cardioRemaining} remaining` : "Goal achieved!"}
-                  </div>
-                )}
-              </div>
 
-              <div className="border-t pt-4 space-y-3">
                 {/* Weekly Calorie Goal */}
                 {weeklyStats.weeklyCaloriesConsumed + weeklyStats.weeklyCaloriesRemaining > 0 && (
                   <div className="space-y-1">
@@ -290,8 +334,8 @@ export default function Home() {
                     </div>
                   </div>
                 )}
-              </div>
-            </CardContent>
+              </CardContent>
+            )}
           </Card>
         </div>
       )}

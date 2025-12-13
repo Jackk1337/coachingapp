@@ -18,7 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ChevronLeft, Plus, Trash2, Save, History } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, Save, History, Search } from "lucide-react";
 import { toast } from "sonner";
 
 interface WorkoutSet {
@@ -88,6 +88,7 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
   const [addExerciseDialogOpen, setAddExerciseDialogOpen] = useState(false);
   const [exerciseLibrary, setExerciseLibrary] = useState<Exercise[]>([]);
   const [selectedExercisesToAdd, setSelectedExercisesToAdd] = useState<string[]>([]);
+  const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
 
   // Ref to keep track of latest workout state for the debounce save
   const workoutRef = useRef<WorkoutLog | null>(null);
@@ -596,14 +597,27 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
           setAddExerciseDialogOpen(open);
           if (!open) {
             setSelectedExercisesToAdd([]);
+            setExerciseSearchQuery("");
           }
         }}
       >
-        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+        <DialogContent className="max-w-2xl max-h-[80vh]">
           <DialogHeader>
             <DialogTitle>Add Exercise to Workout</DialogTitle>
           </DialogHeader>
-          <ScrollArea className="flex-1 pr-4">
+          
+          {/* Search Input */}
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search exercises..."
+              value={exerciseSearchQuery}
+              onChange={(e) => setExerciseSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+
+          <ScrollArea className="h-[400px] pr-4">
             {exerciseLibrary.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 No exercises found. Create exercises in the Exercise Library first.
@@ -611,14 +625,27 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
             ) : (
               <div className="space-y-2">
                 {(() => {
-                  const availableExercises = exerciseLibrary.filter(
+                  // Filter exercises that are not already in the workout
+                  let availableExercises = exerciseLibrary.filter(
                     exercise => !workout.exercises.some(e => e.exerciseId === exercise.id)
                   );
+                  
+                  // Apply search filter
+                  if (exerciseSearchQuery.trim()) {
+                    const query = exerciseSearchQuery.toLowerCase();
+                    availableExercises = availableExercises.filter(
+                      exercise =>
+                        exercise.name.toLowerCase().includes(query) ||
+                        exercise.category.toLowerCase().includes(query)
+                    );
+                  }
                   
                   if (availableExercises.length === 0) {
                     return (
                       <div className="text-center py-8 text-muted-foreground">
-                        All available exercises are already in this workout.
+                        {exerciseSearchQuery.trim()
+                          ? "No exercises match your search."
+                          : "All available exercises are already in this workout."}
                       </div>
                     );
                   }

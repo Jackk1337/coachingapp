@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
 import { format, startOfWeek, endOfWeek, eachDayOfInterval } from "date-fns";
+import { onSnapshot } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dumbbell, Utensils, Activity, CalendarCheck, TrendingUp, User, CreditCard, ChevronDown, ChevronUp, Droplet } from "lucide-react";
@@ -31,6 +32,8 @@ export default function Home() {
   const [weeklyStats, setWeeklyStats] = useState<WeeklyStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [macroOverviewExpanded, setMacroOverviewExpanded] = useState(false);
+  const [todayCalories, setTodayCalories] = useState<{ consumed: number; remaining: number } | null>(null);
+  const [todayWater, setTodayWater] = useState<{ consumedML: number; goalL: number } | null>(null);
 
   const menuItems = [
     { name: "Workout Log", href: "/workout-log", icon: Dumbbell },
@@ -163,6 +166,57 @@ export default function Home() {
     fetchWeeklyStats();
   }, [user, profile]);
 
+  // Fetch today's food diary and water log
+  useEffect(() => {
+    if (!user) {
+      setTodayCalories(null);
+      setTodayWater(null);
+      return;
+    }
+
+    const today = format(new Date(), "yyyy-MM-dd");
+    const foodDiaryDocId = `${user.uid}_${today}`;
+    const waterLogDocId = `${user.uid}_${today}`;
+
+    // Listen to today's food diary
+    const foodDiaryRef = doc(db, "food_diary", foodDiaryDocId);
+    const unsubscribeFood = onSnapshot(foodDiaryRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        const consumed = data.totalCalories || 0;
+        const goal = profile?.goals?.calorieLimit || 0;
+        const remaining = goal - consumed;
+        setTodayCalories({ consumed, remaining });
+      } else {
+        const goal = profile?.goals?.calorieLimit || 0;
+        setTodayCalories({ consumed: 0, remaining: goal });
+      }
+    }, (error) => {
+      console.error("Error listening to food diary:", error);
+    });
+
+    // Listen to today's water log
+    const waterLogRef = doc(db, "water_log", waterLogDocId);
+    const unsubscribeWater = onSnapshot(waterLogRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        const consumedML = data.totalML || 0;
+        const goalL = profile?.goals?.waterGoal || 2;
+        setTodayWater({ consumedML, goalL });
+      } else {
+        const goalL = profile?.goals?.waterGoal || 2;
+        setTodayWater({ consumedML: 0, goalL });
+      }
+    }, (error) => {
+      console.error("Error listening to water log:", error);
+    });
+
+    return () => {
+      unsubscribeFood();
+      unsubscribeWater();
+    };
+  }, [user, profile]);
+
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col items-center">
       <header className="w-full max-w-md mb-6 mt-4 text-center">
@@ -228,6 +282,66 @@ export default function Home() {
                   ) : (
                     <div className="text-xs text-green-500 font-medium">
                       Goal achieved! 🎉
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Food Diary - Today's Calories */}
+          {todayCalories !== null && (profile?.goals?.calorieLimit ?? 0) > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Utensils className="h-5 w-5" />
+                  Food Diary
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Today</span>
+                    <span className={`font-semibold text-lg ${todayCalories.remaining < 0 ? 'text-red-500' : todayCalories.remaining > 0 ? '' : 'text-green-500'}`}>
+                      {todayCalories.remaining > 0 
+                        ? `${Math.round(todayCalories.remaining)} remaining`
+                        : todayCalories.remaining < 0
+                        ? `${Math.abs(Math.round(todayCalories.remaining))} over`
+                        : "Goal met!"}
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {Math.round(todayCalories.consumed)} / {profile?.goals?.calorieLimit || 0} cal
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Water Log - Today's Water */}
+          {todayWater !== null && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Droplet className="h-5 w-5" />
+                  Water Log
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Today</span>
+                    <span className="font-semibold text-lg">
+                      {(todayWater.consumedML / 1000).toFixed(2)}L / {todayWater.goalL}L
+                    </span>
+                  </div>
+                  {todayWater.consumedML >= todayWater.goalL * 1000 ? (
+                    <div className="text-xs text-green-500 font-medium">
+                      Goal achieved! 🎉
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">
+                      {Math.round(((todayWater.goalL * 1000 - todayWater.consumedML) / 1000) * 100) / 100}L remaining
                     </div>
                   )}
                 </div>

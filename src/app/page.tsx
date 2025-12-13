@@ -227,127 +227,130 @@ export default function Home() {
       {/* Weekly Overview Section */}
       {user && !loading && weeklyStats && (
         <div className="w-full max-w-md mb-6 space-y-4">
-          {/* Workout Sessions - Prominent Card */}
-          {(profile?.goals?.workoutSessionsPerWeek ?? 0) > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Dumbbell className="h-5 w-5" />
-                  Workout Sessions
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">This Week</span>
-                    <span className="font-semibold text-lg">
-                      {weeklyStats.workoutCompleted} / {weeklyStats.workoutCompleted + weeklyStats.workoutRemaining}
-                    </span>
+          {/* 2x2 Grid for Overview Cards */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* Workout Sessions - Prominent Card */}
+            {(profile?.goals?.workoutSessionsPerWeek ?? 0) > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Dumbbell className="h-4 w-4" />
+                    Workout Sessions
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground">This Week</span>
+                      <span className="font-semibold text-base">
+                        {weeklyStats.workoutCompleted} / {weeklyStats.workoutCompleted + weeklyStats.workoutRemaining}
+                      </span>
+                    </div>
+                    {weeklyStats.workoutRemaining > 0 ? (
+                      <div className="text-xs text-muted-foreground">
+                        {weeklyStats.workoutRemaining} remaining
+                      </div>
+                    ) : (
+                      <div className="text-xs text-green-500 font-medium">
+                        Goal achieved! 🎉
+                      </div>
+                    )}
                   </div>
-                  {weeklyStats.workoutRemaining > 0 ? (
-                    <div className="text-xs text-muted-foreground">
-                      {weeklyStats.workoutRemaining} remaining
-                    </div>
-                  ) : (
-                    <div className="text-xs text-green-500 font-medium">
-                      Goal achieved! 🎉
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                </CardContent>
+              </Card>
+            )}
 
-          {/* Cardio Sessions - Prominent Card */}
-          {(profile?.goals?.cardioSessionsPerWeek ?? 0) > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Activity className="h-5 w-5" />
-                  Cardio Sessions
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">This Week</span>
-                    <span className="font-semibold text-lg">
-                      {weeklyStats.cardioCompleted} / {weeklyStats.cardioCompleted + weeklyStats.cardioRemaining}
-                    </span>
+            {/* Cardio Sessions - Prominent Card */}
+            {(profile?.goals?.cardioSessionsPerWeek ?? 0) > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Activity className="h-4 w-4" />
+                    Cardio Sessions
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground">This Week</span>
+                      <span className="font-semibold text-base">
+                        {weeklyStats.cardioCompleted} / {weeklyStats.cardioCompleted + weeklyStats.cardioRemaining}
+                      </span>
+                    </div>
+                    {weeklyStats.cardioRemaining > 0 ? (
+                      <div className="text-xs text-muted-foreground">
+                        {weeklyStats.cardioRemaining} remaining
+                      </div>
+                    ) : (
+                      <div className="text-xs text-green-500 font-medium">
+                        Goal achieved! 🎉
+                      </div>
+                    )}
                   </div>
-                  {weeklyStats.cardioRemaining > 0 ? (
-                    <div className="text-xs text-muted-foreground">
-                      {weeklyStats.cardioRemaining} remaining
-                    </div>
-                  ) : (
-                    <div className="text-xs text-green-500 font-medium">
-                      Goal achieved! 🎉
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                </CardContent>
+              </Card>
+            )}
 
-          {/* Food Diary - Today's Calories */}
-          {todayCalories !== null && (profile?.goals?.calorieLimit ?? 0) > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Utensils className="h-5 w-5" />
-                  Food Diary
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Today</span>
-                    <span className={`font-semibold text-lg ${todayCalories.remaining < 0 ? 'text-red-500' : todayCalories.remaining > 0 ? '' : 'text-green-500'}`}>
-                      {todayCalories.remaining > 0 
-                        ? `${Math.round(todayCalories.remaining)} remaining`
-                        : todayCalories.remaining < 0
-                        ? `${Math.abs(Math.round(todayCalories.remaining))} over`
-                        : "Goal met!"}
-                    </span>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {Math.round(todayCalories.consumed)} / {profile?.goals?.calorieLimit || 0} cal
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Water Log - Today's Water */}
-          {todayWater !== null && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Droplet className="h-5 w-5" />
-                  Water Log
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Today</span>
-                    <span className="font-semibold text-lg">
-                      {(todayWater.consumedML / 1000).toFixed(2)}L / {todayWater.goalL}L
-                    </span>
-                  </div>
-                  {todayWater.consumedML >= todayWater.goalL * 1000 ? (
-                    <div className="text-xs text-green-500 font-medium">
-                      Goal achieved! 🎉
+            {/* Food Diary - Today's Calories */}
+            {todayCalories !== null && (profile?.goals?.calorieLimit ?? 0) > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Utensils className="h-4 w-4" />
+                    Food Diary
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground">Today</span>
+                      <span className={`font-semibold text-base ${todayCalories.remaining < 0 ? 'text-red-500' : todayCalories.remaining > 0 ? '' : 'text-green-500'}`}>
+                        {todayCalories.remaining > 0 
+                          ? `${Math.round(todayCalories.remaining)} remaining`
+                          : todayCalories.remaining < 0
+                          ? `${Math.abs(Math.round(todayCalories.remaining))} over`
+                          : "Goal met!"}
+                      </span>
                     </div>
-                  ) : (
                     <div className="text-xs text-muted-foreground">
-                      {Math.round(((todayWater.goalL * 1000 - todayWater.consumedML) / 1000) * 100) / 100}L remaining
+                      {Math.round(todayCalories.consumed)} / {profile?.goals?.calorieLimit || 0} cal
                     </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Water Log - Today's Water */}
+            {todayWater !== null && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Droplet className="h-4 w-4" />
+                    Water Log
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground">Today</span>
+                      <span className="font-semibold text-base">
+                        {(todayWater.consumedML / 1000).toFixed(2)}L / {todayWater.goalL}L
+                      </span>
+                    </div>
+                    {todayWater.consumedML >= todayWater.goalL * 1000 ? (
+                      <div className="text-xs text-green-500 font-medium">
+                        Goal achieved! 🎉
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground">
+                        {Math.round(((todayWater.goalL * 1000 - todayWater.consumedML) / 1000) * 100) / 100}L remaining
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
 
           {/* Weekly Macro Overview - Collapsible Card */}
           <Card>

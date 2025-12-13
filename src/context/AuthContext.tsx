@@ -24,6 +24,7 @@ interface UserProfile {
     workoutSessionsPerWeek: number;
     cardioSessionsPerWeek: number;
     startingWeight: number;
+    waterGoal?: number; // Daily water goal in liters
   };
 }
 

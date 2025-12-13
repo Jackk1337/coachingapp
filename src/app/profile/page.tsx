@@ -36,6 +36,7 @@ export default function ProfilePage() {
     workoutSessionsPerWeek: "",
     cardioSessionsPerWeek: "",
     startingWeight: "",
+    waterGoal: "",
   });
 
   useEffect(() => {
@@ -49,6 +50,7 @@ export default function ProfilePage() {
         workoutSessionsPerWeek: profile.goals.workoutSessionsPerWeek?.toString() || "",
         cardioSessionsPerWeek: profile.goals.cardioSessionsPerWeek?.toString() || "",
         startingWeight: profile.goals.startingWeight?.toString() || "",
+        waterGoal: profile.goals.waterGoal?.toString() || "",
       });
     }
   }, [profile]);
@@ -97,6 +99,7 @@ export default function ProfilePage() {
           workoutSessionsPerWeek: Number(formData.workoutSessionsPerWeek),
           cardioSessionsPerWeek: Number(formData.cardioSessionsPerWeek),
           startingWeight: Number(formData.startingWeight),
+          waterGoal: Number(formData.waterGoal) || undefined,
         },
       });
       toast.success("Profile updated successfully!");
@@ -278,6 +281,22 @@ export default function ProfilePage() {
                 onChange={handleChange}
                 placeholder="e.g. 75"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="waterGoal">Daily Water Goal (Liters)</Label>
+              <Input
+                id="waterGoal"
+                name="waterGoal"
+                type="number"
+                step="0.5"
+                value={formData.waterGoal}
+                onChange={handleChange}
+                placeholder="e.g. 2"
+              />
+              <p className="text-xs text-muted-foreground">
+                Recommended: 2-3 liters per day
+              </p>
             </div>
 
             <Button type="submit" className="w-full" disabled={loading}>

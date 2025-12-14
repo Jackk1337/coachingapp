@@ -2611,6 +2611,35 @@ export default function FoodDiaryPage() {
                 />
               </div>
 
+              {/* Show calculated values */}
+              {(editMealFoodData.proteinPer100g || editMealFoodData.carbPer100g || editMealFoodData.fatPer100g) && (
+                <div className="pt-3 border-t space-y-2">
+                  <p className="text-xs font-semibold">Calculated Values:</p>
+                  <div className="text-xs space-y-1">
+                    <p className="text-muted-foreground">
+                      Calories per 100g: {Math.ceil(calculateCaloriesFromMacros(
+                        Number(editMealFoodData.proteinPer100g) || 0,
+                        Number(editMealFoodData.carbPer100g) || 0,
+                        Number(editMealFoodData.fatPer100g) || 0
+                      ))} cal
+                    </p>
+                    {editMealFoodData.servingSize && (
+                      <p className="text-muted-foreground">
+                        Calories per serving ({Math.ceil(Number(editMealFoodData.servingSize))}g): {
+                          Math.ceil(
+                            calculateCaloriesFromMacros(
+                              Number(editMealFoodData.proteinPer100g) || 0,
+                              Number(editMealFoodData.carbPer100g) || 0,
+                              Number(editMealFoodData.fatPer100g) || 0
+                            ) * (Number(editMealFoodData.servingSize) / 100)
+                          )
+                        } cal
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="p-4 bg-muted/30 rounded-lg space-y-4">
                 <p className="text-sm font-semibold">Macros per 100g</p>
                 
@@ -2665,35 +2694,6 @@ export default function FoodDiaryPage() {
                     placeholder="Auto-calculated from macros"
                   />
                 </div>
-
-                {/* Show calculated values */}
-                {(editMealFoodData.proteinPer100g || editMealFoodData.carbPer100g || editMealFoodData.fatPer100g) && (
-                  <div className="pt-3 border-t space-y-2">
-                    <p className="text-xs font-semibold">Calculated Values:</p>
-                    <div className="text-xs space-y-1">
-                      <p className="text-muted-foreground">
-                        Calories per 100g: {Math.ceil(calculateCaloriesFromMacros(
-                          Number(editMealFoodData.proteinPer100g) || 0,
-                          Number(editMealFoodData.carbPer100g) || 0,
-                          Number(editMealFoodData.fatPer100g) || 0
-                        ))} cal
-                      </p>
-                      {editMealFoodData.servingSize && (
-                        <p className="text-muted-foreground">
-                          Calories per serving ({Math.ceil(Number(editMealFoodData.servingSize))}g): {
-                            Math.ceil(
-                              calculateCaloriesFromMacros(
-                                Number(editMealFoodData.proteinPer100g) || 0,
-                                Number(editMealFoodData.carbPer100g) || 0,
-                                Number(editMealFoodData.fatPer100g) || 0
-                              ) * (Number(editMealFoodData.servingSize) / 100)
-                            )
-                          } cal
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
 
               <div className="flex gap-2">

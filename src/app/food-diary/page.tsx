@@ -3069,18 +3069,9 @@ export default function FoodDiaryPage() {
               variant="outline"
               className="w-full border-primary text-primary hover:bg-primary hover:text-primary-foreground"
               onClick={async () => {
-                // Create a new blank meal first
+                // Create a new blank meal
                 await handleAddMeal();
-                // Wait for meal to be created, then open food selection
-                setTimeout(() => {
-                  const meals = foodDiary?.meals || [];
-                  if (meals.length > 0) {
-                    const newestMeal = meals[meals.length - 1];
-                    setSelectedMealId(newestMeal.id);
-                    setSavedMealsDialogOpen(false);
-                    setFoodSelectionOpen(true);
-                  }
-                }, 200);
+                setSavedMealsDialogOpen(false);
               }}
               disabled={loading}
             >

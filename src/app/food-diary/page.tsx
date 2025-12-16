@@ -1736,13 +1736,7 @@ export default function FoodDiaryPage() {
                 <div key={meal.id} className="border-b">
                   {/* Meal Header */}
                   <div className="flex items-center justify-between px-4 py-3 bg-muted/30">
-                    <div 
-                      className="flex items-center gap-3 flex-wrap flex-1 cursor-pointer hover:bg-muted/50 -mx-4 px-4 py-1 rounded transition-colors"
-                      onClick={() => {
-                        setSelectedMealId(meal.id);
-                        setSavedMealsDialogOpen(true);
-                      }}
-                    >
+                    <div className="flex items-center gap-3 flex-wrap">
                       <h3 className="text-base font-semibold">Meal {meal.mealNumber}</h3>
                       <span className="text-sm text-muted-foreground">
                         {meal.foods.length} {meal.foods.length === 1 ? 'item' : 'items'}
@@ -1762,7 +1756,7 @@ export default function FoodDiaryPage() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-2">
                       {meal.foods && meal.foods.length > 0 && (
                         <Button
                           variant="ghost"
@@ -1841,6 +1835,20 @@ export default function FoodDiaryPage() {
                     </div>
                   ) : null}
 
+                  {/* Add Food Button */}
+                  <div className="px-4 py-3">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+                      onClick={() => {
+                        setSelectedMealId(meal.id);
+                        setFoodSelectionOpen(true);
+                      }}
+                    >
+                      <Plus className="h-4 w-4 mr-2" /> ADD FOOD
+                    </Button>
+                  </div>
                 </div>
               );
             })}

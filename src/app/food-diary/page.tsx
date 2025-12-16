@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Html5Qrcode, Html5QrcodeScanType } from "html5-qrcode";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
-import { collection, query, where, onSnapshot, doc, setDoc, addDoc, getDocs, getDoc, Timestamp } from "firebase/firestore";
+import { collection, query, where, onSnapshot, doc, setDoc, addDoc, getDocs, getDoc, deleteDoc, Timestamp } from "firebase/firestore";
 import { format, addDays, subDays } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChevronLeft, ChevronRight, Plus, Trash2, Search, Scan, Utensils } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, Search, Scan, Utensils, Bookmark, BookmarkPlus } from "lucide-react";
 import { toast } from "sonner";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import { Badge } from "@/components/ui/badge";
@@ -136,6 +136,12 @@ export default function FoodDiaryPage() {
   const scannerElementId = "barcode-scanner";
   const [foodLibrary, setFoodLibrary] = useState<Food[]>([]);
   const [recentFoods, setRecentFoods] = useState<string[]>([]); // Array of food IDs
+  const [savedMeals, setSavedMeals] = useState<Array<{ id: string; name: string; foods: Food[]; createdAt: any }>>([]);
+  const [saveMealDialogOpen, setSaveMealDialogOpen] = useState(false);
+  const [mealToSave, setMealToSave] = useState<Meal | null>(null);
+  const [savedMealName, setSavedMealName] = useState("");
+  const [savedMealsDialogOpen, setSavedMealsDialogOpen] = useState(false);
+  const [savedMealsSearchQuery, setSavedMealsSearchQuery] = useState("");
 
   // Format date for display (DD/MM/YYYY) and storage (YYYY-MM-DD)
   const displayDate = format(currentDate, "dd/MM/yyyy");
@@ -196,6 +202,36 @@ export default function FoodDiaryPage() {
         console.error("Error loading recent foods:", e);
       }
     }
+  }, [user]);
+
+  // Fetch saved meals
+  useEffect(() => {
+    if (!user) return;
+
+    const savedMealsRef = collection(db, "saved_meals");
+    const q = query(savedMealsRef, where("userId", "==", user.uid));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const meals: Array<{ id: string; name: string; foods: Food[]; createdAt: any }> = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        meals.push({
+          id: doc.id,
+          name: data.name,
+          foods: data.foods || [],
+          createdAt: data.createdAt,
+        });
+      });
+      // Sort by creation date, newest first
+      meals.sort((a, b) => {
+        const aTime = a.createdAt?.toMillis?.() || 0;
+        const bTime = b.createdAt?.toMillis?.() || 0;
+        return bTime - aTime;
+      });
+      setSavedMeals(meals);
+    });
+
+    return () => unsubscribe();
   }, [user]);
 
   const handleDateChange = (days: number) => {
@@ -285,6 +321,200 @@ export default function FoodDiaryPage() {
     } catch (error) {
       console.error("Error deleting meal:", error);
       toast.error("Failed to delete meal");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle opening save meal dialog
+  const handleOpenSaveMeal = (meal: Meal) => {
+    if (!meal.foods || meal.foods.length === 0) {
+      toast.error("Cannot save an empty meal");
+      return;
+    }
+    setMealToSave(meal);
+    setSavedMealName("");
+    setSaveMealDialogOpen(true);
+  };
+
+  // Handle saving a meal
+  const handleSaveMeal = async () => {
+    if (!user || !mealToSave || !savedMealName.trim()) {
+      toast.error("Please enter a meal name");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const mealData = {
+        userId: user.uid,
+        name: savedMealName.trim(),
+        foods: mealToSave.foods,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      };
+
+      await addDoc(collection(db, "saved_meals"), mealData);
+      toast.success("Meal saved successfully!");
+      setSaveMealDialogOpen(false);
+      setMealToSave(null);
+      setSavedMealName("");
+    } catch (error) {
+      console.error("Error saving meal:", error);
+      toast.error("Failed to save meal");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle creating a new meal with saved meal foods
+  const handleCreateMealWithSavedMeal = async (savedMeal: { id: string; name: string; foods: Food[] }) => {
+    if (!user || !docId) {
+      toast.error("User not authenticated");
+      return;
+    }
+
+    if (!savedMeal.foods || savedMeal.foods.length === 0) {
+      toast.error("This saved meal has no food items");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const currentMeals = foodDiary?.meals || [];
+      const nextMealNumber = currentMeals.length + 1;
+      
+      // Create new meal with saved meal foods
+      const newMeal: Meal = {
+        id: Date.now().toString(),
+        mealNumber: nextMealNumber,
+        foods: savedMeal.foods,
+      };
+
+      const updatedMeals = [...currentMeals, newMeal];
+      
+      // Recalculate totals
+      let totalCalories = 0;
+      let totalProtein = 0;
+      let totalCarbs = 0;
+      let totalFat = 0;
+
+      updatedMeals.forEach(meal => {
+        meal.foods.forEach(f => {
+          totalCalories += f.caloriesPerServing;
+          totalProtein += f.proteinPerServing;
+          totalCarbs += f.carbsPerServing;
+          totalFat += f.fatPerServing;
+        });
+      });
+      
+      const updateData: any = {
+        userId: user.uid,
+        date: dbDate,
+        meals: updatedMeals,
+        totalCalories: totalCalories,
+        totalProtein: totalProtein,
+        totalCarbs: totalCarbs,
+        totalFat: totalFat,
+        updatedAt: Timestamp.now(),
+      };
+
+      // Only add createdAt if this is a new document
+      if (!foodDiary) {
+        updateData.createdAt = Timestamp.now();
+      }
+      
+      await setDoc(doc(db, "food_diary", docId), updateData, { merge: true });
+      toast.success(`${savedMeal.name} meal created`);
+      setSavedMealsDialogOpen(false);
+    } catch (error) {
+      console.error("Error creating meal with saved meal:", error);
+      toast.error("Failed to create meal");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle adding a saved meal to existing meal (when clicking meal header)
+  const handleAddSavedMealToExisting = async (savedMeal: { id: string; name: string; foods: Food[] }) => {
+    if (!user || !docId || !foodDiary || !selectedMealId) {
+      toast.error("Please select a meal first");
+      return;
+    }
+
+    if (!savedMeal.foods || savedMeal.foods.length === 0) {
+      toast.error("This saved meal has no food items");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Find the meal to add foods to
+      const mealIndex = foodDiary.meals.findIndex(m => m.id === selectedMealId);
+      if (mealIndex === -1) {
+        toast.error("Meal not found");
+        return;
+      }
+
+      // Add all foods from saved meal to the current meal
+      const updatedMeals = [...foodDiary.meals];
+      updatedMeals[mealIndex] = {
+        ...updatedMeals[mealIndex],
+        foods: [...updatedMeals[mealIndex].foods, ...savedMeal.foods],
+      };
+
+      // Recalculate totals
+      let totalCalories = 0;
+      let totalProtein = 0;
+      let totalCarbs = 0;
+      let totalFat = 0;
+
+      updatedMeals.forEach(meal => {
+        meal.foods.forEach(f => {
+          totalCalories += f.caloriesPerServing;
+          totalProtein += f.proteinPerServing;
+          totalCarbs += f.carbsPerServing;
+          totalFat += f.fatPerServing;
+        });
+      });
+
+      const updateData: any = {
+        userId: user.uid,
+        date: dbDate,
+        meals: updatedMeals,
+        totalCalories: totalCalories,
+        totalProtein: totalProtein,
+        totalCarbs: totalCarbs,
+        totalFat: totalFat,
+        updatedAt: Timestamp.now(),
+      };
+
+      await setDoc(doc(db, "food_diary", docId), updateData, { merge: true });
+      toast.success(`${savedMeal.name} added to meal`);
+      setSavedMealsDialogOpen(false);
+      setSelectedMealId(null);
+    } catch (error) {
+      console.error("Error adding saved meal:", error);
+      toast.error("Failed to add saved meal");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle deleting a saved meal
+  const handleDeleteSavedMeal = async (savedMealId: string) => {
+    if (!confirm("Are you sure you want to delete this saved meal?")) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const savedMealRef = doc(db, "saved_meals", savedMealId);
+      await deleteDoc(savedMealRef);
+      toast.success("Saved meal deleted");
+    } catch (error) {
+      console.error("Error deleting saved meal:", error);
+      toast.error("Failed to delete saved meal");
     } finally {
       setLoading(false);
     }
@@ -1506,7 +1736,13 @@ export default function FoodDiaryPage() {
                 <div key={meal.id} className="border-b">
                   {/* Meal Header */}
                   <div className="flex items-center justify-between px-4 py-3 bg-muted/30">
-                    <div className="flex items-center gap-3 flex-wrap">
+                    <div 
+                      className="flex items-center gap-3 flex-wrap flex-1 cursor-pointer hover:bg-muted/50 -mx-4 px-4 py-1 rounded transition-colors"
+                      onClick={() => {
+                        setSelectedMealId(meal.id);
+                        setSavedMealsDialogOpen(true);
+                      }}
+                    >
                       <h3 className="text-base font-semibold">Meal {meal.mealNumber}</h3>
                       <span className="text-sm text-muted-foreground">
                         {meal.foods.length} {meal.foods.length === 1 ? 'item' : 'items'}
@@ -1526,7 +1762,19 @@ export default function FoodDiaryPage() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      {meal.foods && meal.foods.length > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-primary hover:bg-primary/10"
+                          onClick={() => handleOpenSaveMeal(meal)}
+                          disabled={loading}
+                          title="Save Meal"
+                        >
+                          <Bookmark className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -1593,20 +1841,6 @@ export default function FoodDiaryPage() {
                     </div>
                   ) : null}
 
-                  {/* Add Food Button */}
-                  <div className="px-4 py-3">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="w-full border-primary text-primary hover:bg-primary hover:text-primary-foreground"
-                      onClick={() => {
-                        setSelectedMealId(meal.id);
-                        setFoodSelectionOpen(true);
-                      }}
-                    >
-                      <Plus className="h-4 w-4 mr-2" /> ADD FOOD
-                    </Button>
-                  </div>
                 </div>
               );
             })}
@@ -1621,7 +1855,15 @@ export default function FoodDiaryPage() {
 
         {/* Add Meal Button - Always visible */}
         <div className="px-4 py-4 border-t bg-muted/20">
-          <Button onClick={handleAddMeal} disabled={loading} className="w-full" variant="outline">
+          <Button 
+            onClick={() => {
+              setSelectedMealId(null); // Clear selection - we're creating a new meal
+              setSavedMealsDialogOpen(true);
+            }} 
+            disabled={loading} 
+            className="w-full border-primary text-primary hover:bg-primary hover:text-primary-foreground" 
+            variant="outline"
+          >
             <Plus className="h-4 w-4 mr-2" /> Add Meal
           </Button>
         </div>
@@ -2726,6 +2968,211 @@ export default function FoodDiaryPage() {
               </div>
             </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Save Meal Dialog */}
+      <Dialog open={saveMealDialogOpen} onOpenChange={(open) => {
+        setSaveMealDialogOpen(open);
+        if (!open) {
+          setMealToSave(null);
+          setSavedMealName("");
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save Meal</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="savedMealName">Meal Name *</Label>
+              <Input
+                id="savedMealName"
+                value={savedMealName}
+                onChange={(e) => setSavedMealName(e.target.value)}
+                placeholder="e.g. Breakfast Bowl"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && savedMealName.trim()) {
+                    e.preventDefault();
+                    handleSaveMeal();
+                  }
+                }}
+              />
+            </div>
+
+            {mealToSave && mealToSave.foods && mealToSave.foods.length > 0 && (
+              <div className="p-3 bg-muted/30 rounded-lg">
+                <p className="text-sm font-semibold mb-2">Meal Contents:</p>
+                <div className="space-y-1 text-sm">
+                  {mealToSave.foods.map((food, index) => (
+                    <div key={index} className="text-muted-foreground">
+                      • {food.name} ({Math.ceil(food.caloriesPerServing)} cal)
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 pt-2 border-t text-sm font-semibold">
+                  Total: {Math.ceil(mealToSave.foods.reduce((sum, f) => sum + f.caloriesPerServing, 0))} calories
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setSaveMealDialogOpen(false);
+                  setMealToSave(null);
+                  setSavedMealName("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="flex-1"
+                onClick={handleSaveMeal}
+                disabled={loading || !savedMealName.trim()}
+              >
+                {loading ? "Saving..." : "Save Meal"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Meal Dialog - Unified */}
+      <Dialog open={savedMealsDialogOpen} onOpenChange={(open) => {
+        setSavedMealsDialogOpen(open);
+        if (!open) {
+          setSavedMealsSearchQuery("");
+        }
+      }}>
+        <DialogContent className="max-w-md max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Add Meal</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
+            {/* Create Blank Meal Option */}
+            <Button
+              variant="outline"
+              className="w-full border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+              onClick={async () => {
+                // Create a new blank meal first
+                await handleAddMeal();
+                // Wait for meal to be created, then open food selection
+                setTimeout(() => {
+                  const meals = foodDiary?.meals || [];
+                  if (meals.length > 0) {
+                    const newestMeal = meals[meals.length - 1];
+                    setSelectedMealId(newestMeal.id);
+                    setSavedMealsDialogOpen(false);
+                    setFoodSelectionOpen(true);
+                  }
+                }, 200);
+              }}
+              disabled={loading}
+            >
+              <Plus className="h-4 w-4 mr-2" /> Create Blank Meal
+            </Button>
+
+            {/* Divider */}
+            {savedMeals.length > 0 && (
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">Or choose a saved meal</span>
+                </div>
+              </div>
+            )}
+
+            {/* Search */}
+            {savedMeals.length > 0 && (
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search saved meals..."
+                    value={savedMealsSearchQuery}
+                    onChange={(e) => setSavedMealsSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Saved Meals List */}
+            <ScrollArea className="flex-1 pr-4">
+              {savedMeals.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Bookmark className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No saved meals yet</p>
+                  <p className="text-sm mt-1">Save a meal to use it again later</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {savedMeals
+                    .filter(meal => 
+                      meal.name.toLowerCase().includes(savedMealsSearchQuery.toLowerCase())
+                    )
+                    .map((savedMeal) => {
+                      const totalCalories = savedMeal.foods.reduce((sum, f) => sum + f.caloriesPerServing, 0);
+                      const totalProtein = savedMeal.foods.reduce((sum, f) => sum + f.proteinPerServing, 0);
+                      const totalCarbs = savedMeal.foods.reduce((sum, f) => sum + f.carbsPerServing, 0);
+                      const totalFat = savedMeal.foods.reduce((sum, f) => sum + f.fatPerServing, 0);
+                      
+                      return (
+                        <div
+                          key={savedMeal.id}
+                          className="p-3 border rounded-lg hover:bg-accent/50 transition-colors cursor-pointer"
+                          onClick={() => {
+                            if (selectedMealId) {
+                              // Adding to existing meal (clicked meal header)
+                              handleAddSavedMealToExisting(savedMeal);
+                            } else {
+                              // Creating new meal with saved meal
+                              handleCreateMealWithSavedMeal(savedMeal);
+                            }
+                          }}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <h4 className="font-semibold text-sm">{savedMeal.name}</h4>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {savedMeal.foods.length} {savedMeal.foods.length === 1 ? 'item' : 'items'}
+                              </p>
+                              <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                                <span>{Math.ceil(totalCalories)} cal</span>
+                                <span>{Math.ceil(totalProtein)}g P</span>
+                                <span>{Math.ceil(totalCarbs)}g C</span>
+                                <span>{Math.ceil(totalFat)}g F</span>
+                              </div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteSavedMeal(savedMeal.id);
+                              }}
+                              disabled={loading}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

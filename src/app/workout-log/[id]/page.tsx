@@ -10,6 +10,7 @@ import { format, parseISO } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Dialog,
@@ -18,7 +19,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ChevronLeft, Plus, Trash2, Save, History, Search } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ChevronLeft, Plus, Trash2, Save, History, Search, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 interface WorkoutSet {
@@ -27,6 +29,9 @@ interface WorkoutSet {
   reps: number;
   rpe: number;
   completed: boolean;
+  dropset?: boolean;
+  superset?: boolean;
+  isPB?: boolean; // Track if this set is a personal best
 }
 
 interface WorkoutExercise {
@@ -89,6 +94,13 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
   const [exerciseLibrary, setExerciseLibrary] = useState<Exercise[]>([]);
   const [selectedExercisesToAdd, setSelectedExercisesToAdd] = useState<string[]>([]);
   const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
+  const [pbDialogOpen, setPbDialogOpen] = useState(false);
+  const [pbDialogData, setPbDialogData] = useState<{
+    type: "reps" | "weight";
+    exerciseName: string;
+    weight: number;
+    reps: number;
+  } | null>(null);
 
   // Ref to keep track of latest workout state for the debounce save
   const workoutRef = useRef<WorkoutLog | null>(null);
@@ -213,7 +225,9 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
       weight: 0,
       reps: 0,
       rpe: 0,
-      completed: false
+      completed: false,
+      dropset: false,
+      superset: false
     };
 
     const updatedExercises = [...workout.exercises];
@@ -222,14 +236,41 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
     handleUpdate(updatedExercises);
   };
 
-  const handleSetChange = (exerciseIndex: number, setIndex: number, field: keyof WorkoutSet, value: any) => {
+  const handleSetChange = async (exerciseIndex: number, setIndex: number, field: keyof WorkoutSet, value: any) => {
     if (!workout) return;
     
     const updatedExercises = [...workout.exercises];
+    const currentSet = updatedExercises[exerciseIndex].sets[setIndex];
+    const exercise = updatedExercises[exerciseIndex];
+    
     updatedExercises[exerciseIndex].sets[setIndex] = {
-      ...updatedExercises[exerciseIndex].sets[setIndex],
-      [field]: field === "completed" ? value : Number(value)
+      ...currentSet,
+      [field]: field === "completed" || field === "dropset" || field === "superset" ? value : Number(value)
     };
+    
+    // Check for PB when set is marked as completed
+    if (field === "completed" && value === true) {
+      const updatedSet = updatedExercises[exerciseIndex].sets[setIndex];
+      // Only check if weight and reps are valid
+      if (updatedSet.weight > 0 && updatedSet.reps >= 1) {
+        const pbResult = await checkForPB(exercise.exerciseId, updatedSet, workout.date);
+        if (pbResult.isPB && pbResult.type) {
+          // Mark set as PB
+          updatedExercises[exerciseIndex].sets[setIndex] = {
+            ...updatedSet,
+            isPB: true
+          };
+          // Show PB dialog
+          setPbDialogData({
+            type: pbResult.type,
+            exerciseName: exercise.name,
+            weight: updatedSet.weight,
+            reps: updatedSet.reps
+          });
+          setPbDialogOpen(true);
+        }
+      }
+    }
     
     handleUpdate(updatedExercises);
   };
@@ -308,6 +349,70 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
     }
   };
 
+  const checkForPB = async (
+    exerciseId: string,
+    currentSet: WorkoutSet,
+    currentWorkoutDate: string
+  ): Promise<{ isPB: boolean; type: "reps" | "weight" | null }> => {
+    if (!user || !currentSet.weight || !currentSet.reps || currentSet.weight <= 0 || currentSet.reps < 1) {
+      return { isPB: false, type: null };
+    }
+
+    try {
+      // Fetch all completed workouts for this user and exercise
+      const workoutsQuery = query(
+        collection(db, "workout_logs"),
+        where("userId", "==", user.uid),
+        where("status", "==", "completed"),
+        orderBy("date", "desc")
+      );
+
+      const snapshot = await getDocs(workoutsQuery);
+      const allHistoricalSets: WorkoutSet[] = [];
+
+      snapshot.forEach((doc) => {
+        const workoutData = doc.data() as WorkoutLog;
+        // Skip the current workout to compare against past workouts only
+        if (workoutData.date === currentWorkoutDate) {
+          return;
+        }
+        const exercise = workoutData.exercises?.find(e => e.exerciseId === exerciseId);
+        
+        if (exercise && exercise.sets && exercise.sets.length > 0) {
+          // Only include sets with valid weight and reps
+          const validSets = exercise.sets.filter(
+            set => set.weight > 0 && set.reps >= 1
+          );
+          allHistoricalSets.push(...validSets);
+        }
+      });
+
+      // Check for "more reps at same weight" PB
+      const setsAtSameWeight = allHistoricalSets.filter(
+        set => set.weight === currentSet.weight
+      );
+      if (setsAtSameWeight.length > 0) {
+        const maxRepsAtWeight = Math.max(...setsAtSameWeight.map(set => set.reps));
+        if (currentSet.reps > maxRepsAtWeight) {
+          return { isPB: true, type: "reps" };
+        }
+      }
+
+      // Check for "new weight" PB
+      const hasLiftedThisWeight = allHistoricalSets.some(
+        set => set.weight === currentSet.weight && set.reps >= 1
+      );
+      if (!hasLiftedThisWeight && currentSet.reps >= 1) {
+        return { isPB: true, type: "weight" };
+      }
+
+      return { isPB: false, type: null };
+    } catch (error) {
+      console.error("Error checking for PB:", error);
+      return { isPB: false, type: null };
+    }
+  };
+
   // Fetch exercise library for adding exercises
   useEffect(() => {
     if (!user || !addExerciseDialogOpen) return;
@@ -382,10 +487,50 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
     setSaving(true);
     
     try {
+      // Check all completed sets for PBs before ending workout
+      const updatedExercises = [...workout.exercises];
+      let hasNewPB = false;
+      let lastPbData: { type: "reps" | "weight"; exerciseName: string; weight: number; reps: number } | null = null;
+
+      for (let exerciseIndex = 0; exerciseIndex < updatedExercises.length; exerciseIndex++) {
+        const exercise = updatedExercises[exerciseIndex];
+        for (let setIndex = 0; setIndex < exercise.sets.length; setIndex++) {
+          const set = exercise.sets[setIndex];
+          // Only check completed sets that aren't already marked as PB and have valid data
+          if (set.completed && !set.isPB && set.weight > 0 && set.reps >= 1) {
+            const pbResult = await checkForPB(exercise.exerciseId, set, workout.date);
+            if (pbResult.isPB && pbResult.type) {
+              updatedExercises[exerciseIndex].sets[setIndex] = {
+                ...set,
+                isPB: true
+              };
+              hasNewPB = true;
+              lastPbData = {
+                type: pbResult.type,
+                exerciseName: exercise.name,
+                weight: set.weight,
+                reps: set.reps
+              };
+            }
+          }
+        }
+      }
+
+      // If we found new PBs, update the workout first
+      if (hasNewPB && lastPbData) {
+        const workoutDocRef = doc(db, "workout_logs", workoutId);
+        await updateDoc(workoutDocRef, {
+          exercises: updatedExercises
+        });
+        // Show dialog for the last PB found
+        setPbDialogData(lastPbData);
+        setPbDialogOpen(true);
+      }
+
       const workoutDocRef = doc(db, "workout_logs", workoutId);
       // Ensure latest data is saved
       await updateDoc(workoutDocRef, {
-        exercises: workout.exercises,
+        exercises: hasNewPB ? updatedExercises : workout.exercises,
         status: "completed",
         endedAt: new Date()
       });
@@ -463,17 +608,55 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
                <Table>
                  <TableHeader>
                    <TableRow>
-                     <TableHead className="w-[60px] text-center">Set</TableHead>
+                     <TableHead className="w-[80px] text-center">Set</TableHead>
+                     <TableHead className="w-[100px] text-center">Type</TableHead>
                      <TableHead className="text-center">kg</TableHead>
                      <TableHead className="text-center">Reps</TableHead>
                      <TableHead className="text-center">RPE</TableHead>
-                     <TableHead className="w-[50px]"></TableHead>
+                     <TableHead className="text-center">Done</TableHead>
+                     <TableHead className="w-[100px]"></TableHead>
                    </TableRow>
                  </TableHeader>
                  <TableBody>
                    {exercise.sets.map((set, setIndex) => (
                      <TableRow key={set.id}>
-                       <TableCell className="text-center font-medium">{setIndex + 1}</TableCell>
+                       <TableCell className="text-center font-medium">
+                         <div className="flex items-center justify-center gap-1">
+                           <span>{setIndex + 1}</span>
+                           {set.dropset && (
+                             <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5">
+                               DS
+                             </Badge>
+                           )}
+                           {set.superset && (
+                             <Badge variant="outline" className="text-xs px-1.5 py-0 h-5">
+                               SS
+                             </Badge>
+                           )}
+                         </div>
+                       </TableCell>
+                       <TableCell>
+                         <div className="flex items-center justify-center gap-2">
+                           <div className="flex flex-col items-center gap-1">
+                             <Checkbox
+                               checked={set.dropset || false}
+                               onCheckedChange={(checked) => 
+                                 handleSetChange(exerciseIndex, setIndex, "dropset", checked)
+                               }
+                             />
+                             <span className="text-xs text-muted-foreground">DS</span>
+                           </div>
+                           <div className="flex flex-col items-center gap-1">
+                             <Checkbox
+                               checked={set.superset || false}
+                               onCheckedChange={(checked) => 
+                                 handleSetChange(exerciseIndex, setIndex, "superset", checked)
+                               }
+                             />
+                             <span className="text-xs text-muted-foreground">SS</span>
+                           </div>
+                         </div>
+                       </TableCell>
                        <TableCell>
                          <Input 
                            type="number" 
@@ -498,15 +681,28 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
                            onChange={(e) => handleSetChange(exerciseIndex, setIndex, "rpe", e.target.value)}
                          />
                        </TableCell>
+                       <TableCell className="text-center">
+                         <Checkbox
+                           checked={set.completed || false}
+                           onCheckedChange={(checked) => 
+                             handleSetChange(exerciseIndex, setIndex, "completed", checked)
+                           }
+                         />
+                       </TableCell>
                        <TableCell>
-                         <Button 
-                           variant="ghost" 
-                           size="icon" 
-                           className="h-8 w-8 text-destructive"
-                           onClick={() => handleDeleteSet(exerciseIndex, setIndex)}
-                         >
-                           <Trash2 className="h-4 w-4" />
-                         </Button>
+                         <div className="flex items-center justify-center gap-2">
+                           {set.isPB && (
+                             <Trophy className="h-5 w-5 text-yellow-500" />
+                           )}
+                           <Button 
+                             variant="ghost" 
+                             size="icon" 
+                             className="h-8 w-8 text-destructive"
+                             onClick={() => handleDeleteSet(exerciseIndex, setIndex)}
+                           >
+                             <Trash2 className="h-4 w-4" />
+                           </Button>
+                         </div>
                        </TableCell>
                      </TableRow>
                    ))}
@@ -540,53 +736,99 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
 
       {/* History Dialog */}
       <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl flex flex-col p-0 max-h-[85vh]">
+          <DialogHeader className="px-6 pt-6 pb-4 flex-shrink-0">
             <DialogTitle>{selectedExerciseName} - History</DialogTitle>
           </DialogHeader>
-          <ScrollArea className="flex-1 pr-4">
-            {loadingHistory ? (
-              <div className="text-center py-8">Loading history...</div>
-            ) : exerciseHistory.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No history found for this exercise.
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {exerciseHistory.map((entry) => (
-                  <Card key={entry.date}>
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-base">
-                        {format(parseISO(entry.date), "dd/MM/yyyy")}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="w-[60px] text-center">Set</TableHead>
-                            <TableHead className="text-center">Weight (kg)</TableHead>
-                            <TableHead className="text-center">Reps</TableHead>
-                            <TableHead className="text-center">RPE</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {entry.sets.map((set, index) => (
-                            <TableRow key={index}>
-                              <TableCell className="text-center font-medium">{index + 1}</TableCell>
-                              <TableCell className="text-center">{set.weight || "-"}</TableCell>
-                              <TableCell className="text-center">{set.reps || "-"}</TableCell>
-                              <TableCell className="text-center">{set.rpe || "-"}</TableCell>
+          <ScrollArea className="px-6 pb-6" style={{ height: 'calc(85vh - 120px)' }}>
+              {loadingHistory ? (
+                <div className="text-center py-8">Loading history...</div>
+              ) : exerciseHistory.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No history found for this exercise.
+                </div>
+              ) : (
+                <div className="space-y-6 pr-4">
+                  {exerciseHistory.map((entry) => (
+                    <Card key={entry.date}>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-base">
+                          {format(parseISO(entry.date), "dd/MM/yyyy")}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-[80px] text-center">Set</TableHead>
+                              <TableHead className="text-center">Weight (kg)</TableHead>
+                              <TableHead className="text-center">Reps</TableHead>
+                              <TableHead className="text-center">RPE</TableHead>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
+                          </TableHeader>
+                          <TableBody>
+                            {entry.sets.map((set, index) => (
+                              <TableRow key={index}>
+                                <TableCell className="text-center font-medium">
+                                  <div className="flex items-center justify-center gap-1">
+                                    <span>{index + 1}</span>
+                                    {set.isPB && (
+                                      <Trophy className="h-4 w-4 text-yellow-500" />
+                                    )}
+                                    {set.dropset && (
+                                      <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5">
+                                        DS
+                                      </Badge>
+                                    )}
+                                    {set.superset && (
+                                      <Badge variant="outline" className="text-xs px-1.5 py-0 h-5">
+                                        SS
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-center">{set.weight || "-"}</TableCell>
+                                <TableCell className="text-center">{set.reps || "-"}</TableCell>
+                                <TableCell className="text-center">{set.rpe || "-"}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
           </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* PB Celebration Dialog */}
+      <Dialog open={pbDialogOpen} onOpenChange={setPbDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="flex flex-col items-center gap-4 py-4">
+              <Trophy className="h-16 w-16 text-yellow-500" />
+              <DialogTitle className="text-2xl">Nice, you achieved a PB!</DialogTitle>
+              {pbDialogData && (
+                <div className="text-center space-y-2">
+                  {pbDialogData.type === "reps" ? (
+                    <p className="text-lg">
+                      {pbDialogData.reps} reps at {pbDialogData.weight}kg
+                    </p>
+                  ) : (
+                    <p className="text-lg">
+                      New weight: {pbDialogData.weight}kg ({pbDialogData.reps} reps)
+                    </p>
+                  )}
+                  <p className="text-sm text-muted-foreground">{pbDialogData.exerciseName}</p>
+                </div>
+              )}
+            </div>
+          </DialogHeader>
+          <div className="flex justify-center pb-4">
+            <Button onClick={() => setPbDialogOpen(false)}>Awesome!</Button>
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -9,7 +9,7 @@ import { format, startOfWeek, endOfWeek, eachDayOfInterval } from "date-fns";
 import { onSnapshot } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dumbbell, Utensils, Activity, CalendarCheck, TrendingUp, User, CreditCard, ChevronDown, ChevronUp, Droplet } from "lucide-react";
+import { Dumbbell, Utensils, Activity, CalendarCheck, TrendingUp, User, CreditCard, ChevronDown, ChevronUp, Droplet, Mail, Pill } from "lucide-react";
 
 interface WeeklyStats {
   avgCaloriesPerDay: number;
@@ -40,9 +40,11 @@ export default function Home() {
     { name: "Food Diary", href: "/food-diary", icon: Utensils },
     { name: "Log Water", href: "/water-log", icon: Droplet },
     { name: "Cardio Log", href: "/cardio-log", icon: Activity },
-    { name: "Daily Checkin", href: "/daily-checkin", icon: CalendarCheck },
+    { name: "Supplements", href: "/supplements", icon: Pill },
+    { name: "Checkin", href: "/checkin", icon: CalendarCheck },
     { name: "Progress", href: "/progress", icon: TrendingUp },
     { name: "Cards", href: "/cards", icon: CreditCard },
+    { name: "Messages", href: "/messages", icon: Mail },
     { name: "Profile", href: "/profile", icon: User },
   ];
 

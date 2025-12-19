@@ -17,7 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChevronLeft, ChevronRight, Plus, Trash2, Search, Scan, Utensils, Bookmark, BookmarkPlus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, Search, Scan, Utensils, Bookmark, BookmarkPlus, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import { Badge } from "@/components/ui/badge";
@@ -142,6 +142,13 @@ export default function FoodDiaryPage() {
   const [savedMealName, setSavedMealName] = useState("");
   const [savedMealsDialogOpen, setSavedMealsDialogOpen] = useState(false);
   const [savedMealsSearchQuery, setSavedMealsSearchQuery] = useState("");
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  const [copyType, setCopyType] = useState<"meal" | "food">("meal");
+  const [copySource, setCopySource] = useState<{ mealId: string; foodIndex?: number } | null>(null);
+  const [selectedCopyDay, setSelectedCopyDay] = useState<"today" | "tomorrow" | "yesterday" | null>(null);
+  const [targetFoodDiary, setTargetFoodDiary] = useState<FoodDiary | null>(null);
+  const [selectedTargetMealId, setSelectedTargetMealId] = useState<string | "new" | null>(null);
+  const [copyLoading, setCopyLoading] = useState(false);
 
   // Format date for display (DD/MM/YYYY) and storage (YYYY-MM-DD)
   const displayDate = format(currentDate, "dd/MM/yyyy");
@@ -741,6 +748,307 @@ export default function FoodDiaryPage() {
       toast.error("Failed to remove food from meal");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch food diary for a specific date
+  const fetchFoodDiaryForDate = async (date: Date): Promise<FoodDiary | null> => {
+    if (!user) return null;
+    
+    const targetDbDate = format(date, "yyyy-MM-dd");
+    const targetDocId = `${user.uid}_${targetDbDate}`;
+    
+    try {
+      const foodDiaryRef = doc(db, "food_diary", targetDocId);
+      const snapshot = await getDoc(foodDiaryRef);
+      
+      if (snapshot.exists()) {
+        const data = snapshot.data() as FoodDiary;
+        return { ...data, id: snapshot.id };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error("Error fetching food diary:", error);
+      return null;
+    }
+  };
+
+  // Handle opening copy dialog for meal
+  const handleOpenCopyMeal = (mealId: string) => {
+    setCopyType("meal");
+    setCopySource({ mealId });
+    setSelectedCopyDay(null);
+    setTargetFoodDiary(null);
+    setSelectedTargetMealId(null);
+    setCopyDialogOpen(true);
+  };
+
+  // Handle opening copy dialog for food item
+  const handleOpenCopyFood = (mealId: string, foodIndex: number) => {
+    setCopyType("food");
+    setCopySource({ mealId, foodIndex });
+    setSelectedCopyDay(null);
+    setTargetFoodDiary(null);
+    setSelectedTargetMealId(null);
+    setCopyDialogOpen(true);
+  };
+
+  // Handle day selection in copy dialog
+  const handleCopyDaySelection = async (day: "today" | "tomorrow" | "yesterday") => {
+    if (!user) return;
+    
+    setSelectedCopyDay(day);
+    setSelectedTargetMealId(null);
+    
+    let targetDate: Date;
+    const today = new Date();
+    
+    switch (day) {
+      case "today":
+        targetDate = today;
+        break;
+      case "tomorrow":
+        targetDate = addDays(today, 1);
+        break;
+      case "yesterday":
+        targetDate = subDays(today, 1);
+        break;
+    }
+    
+    const diary = await fetchFoodDiaryForDate(targetDate);
+    setTargetFoodDiary(diary);
+  };
+
+  // Handle copying meal
+  const handleCopyMeal = async () => {
+    if (!user || !copySource || !selectedCopyDay || selectedTargetMealId === null) return;
+    
+    const sourceMeal = foodDiary?.meals.find(m => m.id === copySource.mealId);
+    if (!sourceMeal || !sourceMeal.foods || sourceMeal.foods.length === 0) {
+      toast.error("Source meal not found or is empty");
+      return;
+    }
+    
+    setCopyLoading(true);
+    try {
+      let targetDate: Date;
+      const today = new Date();
+      
+      switch (selectedCopyDay) {
+        case "today":
+          targetDate = today;
+          break;
+        case "tomorrow":
+          targetDate = addDays(today, 1);
+          break;
+        case "yesterday":
+          targetDate = subDays(today, 1);
+          break;
+      }
+      
+      const targetDbDate = format(targetDate, "yyyy-MM-dd");
+      const targetDocId = `${user.uid}_${targetDbDate}`;
+      
+      let targetDiary = targetFoodDiary;
+      if (!targetDiary) {
+        // Create new food diary
+        targetDiary = {
+          id: targetDocId,
+          userId: user.uid,
+          date: targetDbDate,
+          meals: [],
+          totalCalories: 0,
+          totalProtein: 0,
+          totalCarbs: 0,
+          totalFat: 0,
+        };
+      }
+      
+      const updatedMeals = [...targetDiary.meals];
+      
+      if (selectedTargetMealId === "new") {
+        // Create new meal
+        const nextMealNumber = updatedMeals.length + 1;
+        const newMeal: Meal = {
+          id: Date.now().toString(),
+          mealNumber: nextMealNumber,
+          foods: [...sourceMeal.foods],
+        };
+        updatedMeals.push(newMeal);
+      } else {
+        // Add to existing meal
+        const mealIndex = updatedMeals.findIndex(m => m.id === selectedTargetMealId);
+        if (mealIndex === -1) {
+          toast.error("Target meal not found");
+          return;
+        }
+        updatedMeals[mealIndex] = {
+          ...updatedMeals[mealIndex],
+          foods: [...updatedMeals[mealIndex].foods, ...sourceMeal.foods],
+        };
+      }
+      
+      // Recalculate totals
+      let totalCalories = 0;
+      let totalProtein = 0;
+      let totalCarbs = 0;
+      let totalFat = 0;
+      
+      updatedMeals.forEach(meal => {
+        meal.foods.forEach(f => {
+          totalCalories += f.caloriesPerServing;
+          totalProtein += f.proteinPerServing;
+          totalCarbs += f.carbsPerServing;
+          totalFat += f.fatPerServing;
+        });
+      });
+      
+      const updateData: any = {
+        userId: user.uid,
+        date: targetDbDate,
+        meals: updatedMeals,
+        totalCalories: totalCalories,
+        totalProtein: totalProtein,
+        totalCarbs: totalCarbs,
+        totalFat: totalFat,
+        updatedAt: Timestamp.now(),
+      };
+      
+      if (!targetFoodDiary) {
+        updateData.createdAt = Timestamp.now();
+      }
+      
+      await setDoc(doc(db, "food_diary", targetDocId), updateData, { merge: true });
+      
+      toast.success(`Meal copied successfully`);
+      setCopyDialogOpen(false);
+      setCopySource(null);
+      setSelectedCopyDay(null);
+      setTargetFoodDiary(null);
+      setSelectedTargetMealId(null);
+    } catch (error) {
+      console.error("Error copying meal:", error);
+      toast.error("Failed to copy meal");
+    } finally {
+      setCopyLoading(false);
+    }
+  };
+
+  // Handle copying food item
+  const handleCopyFoodItem = async () => {
+    if (!user || !copySource || copySource.foodIndex === undefined || !selectedCopyDay || selectedTargetMealId === null) return;
+    
+    const sourceMeal = foodDiary?.meals.find(m => m.id === copySource.mealId);
+    if (!sourceMeal || !sourceMeal.foods || !sourceMeal.foods[copySource.foodIndex]) {
+      toast.error("Source food item not found");
+      return;
+    }
+    
+    const sourceFood = sourceMeal.foods[copySource.foodIndex];
+    
+    setCopyLoading(true);
+    try {
+      let targetDate: Date;
+      const today = new Date();
+      
+      switch (selectedCopyDay) {
+        case "today":
+          targetDate = today;
+          break;
+        case "tomorrow":
+          targetDate = addDays(today, 1);
+          break;
+        case "yesterday":
+          targetDate = subDays(today, 1);
+          break;
+      }
+      
+      const targetDbDate = format(targetDate, "yyyy-MM-dd");
+      const targetDocId = `${user.uid}_${targetDbDate}`;
+      
+      let targetDiary = targetFoodDiary;
+      if (!targetDiary) {
+        // Create new food diary
+        targetDiary = {
+          id: targetDocId,
+          userId: user.uid,
+          date: targetDbDate,
+          meals: [],
+          totalCalories: 0,
+          totalProtein: 0,
+          totalCarbs: 0,
+          totalFat: 0,
+        };
+      }
+      
+      const updatedMeals = [...targetDiary.meals];
+      
+      if (selectedTargetMealId === "new") {
+        // Create new meal
+        const nextMealNumber = updatedMeals.length + 1;
+        const newMeal: Meal = {
+          id: Date.now().toString(),
+          mealNumber: nextMealNumber,
+          foods: [{ ...sourceFood }],
+        };
+        updatedMeals.push(newMeal);
+      } else {
+        // Add to existing meal
+        const mealIndex = updatedMeals.findIndex(m => m.id === selectedTargetMealId);
+        if (mealIndex === -1) {
+          toast.error("Target meal not found");
+          return;
+        }
+        updatedMeals[mealIndex] = {
+          ...updatedMeals[mealIndex],
+          foods: [...updatedMeals[mealIndex].foods, { ...sourceFood }],
+        };
+      }
+      
+      // Recalculate totals
+      let totalCalories = 0;
+      let totalProtein = 0;
+      let totalCarbs = 0;
+      let totalFat = 0;
+      
+      updatedMeals.forEach(meal => {
+        meal.foods.forEach(f => {
+          totalCalories += f.caloriesPerServing;
+          totalProtein += f.proteinPerServing;
+          totalCarbs += f.carbsPerServing;
+          totalFat += f.fatPerServing;
+        });
+      });
+      
+      const updateData: any = {
+        userId: user.uid,
+        date: targetDbDate,
+        meals: updatedMeals,
+        totalCalories: totalCalories,
+        totalProtein: totalProtein,
+        totalCarbs: totalCarbs,
+        totalFat: totalFat,
+        updatedAt: Timestamp.now(),
+      };
+      
+      if (!targetFoodDiary) {
+        updateData.createdAt = Timestamp.now();
+      }
+      
+      await setDoc(doc(db, "food_diary", targetDocId), updateData, { merge: true });
+      
+      toast.success(`${sourceFood.name} copied successfully`);
+      setCopyDialogOpen(false);
+      setCopySource(null);
+      setSelectedCopyDay(null);
+      setTargetFoodDiary(null);
+      setSelectedTargetMealId(null);
+    } catch (error) {
+      console.error("Error copying food item:", error);
+      toast.error("Failed to copy food item");
+    } finally {
+      setCopyLoading(false);
     }
   };
 
@@ -1758,16 +2066,28 @@ export default function FoodDiaryPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       {meal.foods && meal.foods.length > 0 && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-primary hover:bg-primary/10"
-                          onClick={() => handleOpenSaveMeal(meal)}
-                          disabled={loading}
-                          title="Save Meal"
-                        >
-                          <Bookmark className="h-4 w-4" />
-                        </Button>
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-primary hover:bg-primary/10"
+                            onClick={() => handleOpenCopyMeal(meal.id)}
+                            disabled={loading}
+                            title="Copy Meal"
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-primary hover:bg-primary/10"
+                            onClick={() => handleOpenSaveMeal(meal)}
+                            disabled={loading}
+                            title="Save Meal"
+                          >
+                            <Bookmark className="h-4 w-4" />
+                          </Button>
+                        </>
                       )}
                       <Button
                         variant="ghost"
@@ -1808,15 +2128,27 @@ export default function FoodDiaryPage() {
                               <TableCell className="text-right py-3">{Math.ceil(food.carbsPerServing)}</TableCell>
                               <TableCell className="text-right py-3">{Math.ceil(food.fatPerServing)}</TableCell>
                               <TableCell onClick={(e) => e.stopPropagation()} className="py-3">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 text-destructive hover:bg-destructive/10"
-                                  onClick={() => handleRemoveFoodFromMeal(meal.id, index)}
-                                  disabled={loading}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-primary hover:bg-primary/10"
+                                    onClick={() => handleOpenCopyFood(meal.id, index)}
+                                    disabled={loading}
+                                    title="Copy Food"
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                                    onClick={() => handleRemoveFoodFromMeal(meal.id, index)}
+                                    disabled={loading}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
                               </TableCell>
                             </TableRow>
                           ))}
@@ -3171,6 +3503,167 @@ export default function FoodDiaryPage() {
                 </div>
               )}
             </ScrollArea>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Copy Dialog */}
+      <Dialog open={copyDialogOpen} onOpenChange={(open) => {
+        setCopyDialogOpen(open);
+        if (!open) {
+          setCopySource(null);
+          setSelectedCopyDay(null);
+          setTargetFoodDiary(null);
+          setSelectedTargetMealId(null);
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {copyType === "meal" ? "Copy Meal" : "Copy Food Item"}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {/* Day Selection */}
+            <div className="space-y-2">
+              <Label>Select Day</Label>
+              <div className="grid grid-cols-3 gap-2">
+                <Button
+                  type="button"
+                  variant={selectedCopyDay === "today" ? "default" : "outline"}
+                  onClick={() => handleCopyDaySelection("today")}
+                  disabled={copyLoading}
+                >
+                  Today
+                </Button>
+                <Button
+                  type="button"
+                  variant={selectedCopyDay === "tomorrow" ? "default" : "outline"}
+                  onClick={() => handleCopyDaySelection("tomorrow")}
+                  disabled={copyLoading}
+                >
+                  Tomorrow
+                </Button>
+                <Button
+                  type="button"
+                  variant={selectedCopyDay === "yesterday" ? "default" : "outline"}
+                  onClick={() => handleCopyDaySelection("yesterday")}
+                  disabled={copyLoading}
+                >
+                  Yesterday
+                </Button>
+              </div>
+            </div>
+
+            {/* Meal Selection */}
+            {selectedCopyDay && (
+              <div className="space-y-2">
+                <Label>Select Meal</Label>
+                {targetFoodDiary && targetFoodDiary.meals && targetFoodDiary.meals.length > 0 ? (
+                  <ScrollArea className="h-[200px] border rounded-md p-2">
+                    <div className="space-y-2">
+                      {targetFoodDiary.meals.map((meal) => {
+                        const mealTotalCalories = meal.foods.reduce((sum, food) => sum + food.caloriesPerServing, 0);
+                        const mealTotalProtein = meal.foods.reduce((sum, food) => sum + food.proteinPerServing, 0);
+                        const mealTotalCarbs = meal.foods.reduce((sum, food) => sum + food.carbsPerServing, 0);
+                        const mealTotalFat = meal.foods.reduce((sum, food) => sum + food.fatPerServing, 0);
+                        
+                        return (
+                          <div
+                            key={meal.id}
+                            className={`p-3 border rounded-md cursor-pointer transition-colors ${
+                              selectedTargetMealId === meal.id
+                                ? "border-primary bg-primary/10"
+                                : "hover:bg-accent"
+                            }`}
+                            onClick={() => setSelectedTargetMealId(meal.id)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium">Meal {meal.mealNumber}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {meal.foods.length} {meal.foods.length === 1 ? "item" : "items"}
+                                </p>
+                              </div>
+                              <div className="text-xs text-muted-foreground text-right">
+                                <div>{Math.ceil(mealTotalCalories)} cal</div>
+                                <div>{Math.ceil(mealTotalProtein)}g P / {Math.ceil(mealTotalCarbs)}g C / {Math.ceil(mealTotalFat)}g F</div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div
+                        className={`p-3 border rounded-md cursor-pointer transition-colors ${
+                          selectedTargetMealId === "new"
+                            ? "border-primary bg-primary/10"
+                            : "hover:bg-accent"
+                        }`}
+                        onClick={() => setSelectedTargetMealId("new")}
+                      >
+                        <p className="font-medium">Create New Meal</p>
+                        <p className="text-xs text-muted-foreground">
+                          Add to a new meal
+                        </p>
+                      </div>
+                    </div>
+                  </ScrollArea>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="p-4 border border-dashed rounded-md text-center text-sm text-muted-foreground">
+                      No meals for this day
+                    </div>
+                    <div
+                      className={`p-3 border rounded-md cursor-pointer transition-colors ${
+                        selectedTargetMealId === "new"
+                          ? "border-primary bg-primary/10"
+                          : "hover:bg-accent"
+                      }`}
+                      onClick={() => setSelectedTargetMealId("new")}
+                    >
+                      <p className="font-medium">Create New Meal</p>
+                      <p className="text-xs text-muted-foreground">
+                        Add to a new meal
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setCopyDialogOpen(false);
+                  setCopySource(null);
+                  setSelectedCopyDay(null);
+                  setTargetFoodDiary(null);
+                  setSelectedTargetMealId(null);
+                }}
+                disabled={copyLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="flex-1"
+                onClick={() => {
+                  if (copyType === "meal") {
+                    handleCopyMeal();
+                  } else {
+                    handleCopyFoodItem();
+                  }
+                }}
+                disabled={copyLoading || !selectedCopyDay || selectedTargetMealId === null}
+              >
+                {copyLoading ? "Copying..." : "Copy"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

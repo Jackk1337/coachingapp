@@ -15,6 +15,7 @@ interface UserProfile {
   email: string | null;
   displayName: string | null;
   photoURL: string | null;
+  coachId?: string;
   goals?: {
     goalType: "Lose Weight" | "Gain Strength" | "Gain Weight";
     calorieLimit: number;

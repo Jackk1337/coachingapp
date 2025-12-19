@@ -16,17 +16,38 @@ import {
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, doc, getDoc } from "firebase/firestore";
 
 // Calorie constants per gram
 const CALORIES_PER_GRAM_PROTEIN = 4;
 const CALORIES_PER_GRAM_CARB = 4;
 const CALORIES_PER_GRAM_FAT = 9;
 
+interface Coach {
+  coach_id: string;
+  coach_name: string;
+  coach_persona: string;
+  coach_picture: string;
+}
+
 export default function ProfilePage() {
   const { user, profile, updateProfile, signOut } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [coachDialogOpen, setCoachDialogOpen] = useState(false);
+  const [coaches, setCoaches] = useState<Coach[]>([]);
+  const [selectedCoach, setSelectedCoach] = useState<Coach | null>(null);
+  const [loadingCoaches, setLoadingCoaches] = useState(false);
+  const [loadingSelectedCoach, setLoadingSelectedCoach] = useState(false);
   const [formData, setFormData] = useState({
     goalType: "",
     calorieLimit: "",
@@ -54,6 +75,58 @@ export default function ProfilePage() {
       });
     }
   }, [profile]);
+
+  // Fetch selected coach details when profile.coachId changes
+  useEffect(() => {
+    const fetchSelectedCoach = async () => {
+      if (profile?.coachId && db) {
+        setLoadingSelectedCoach(true);
+        try {
+          const coachRef = doc(db, "coaches", profile.coachId);
+          const coachSnap = await getDoc(coachRef);
+          if (coachSnap.exists()) {
+            setSelectedCoach(coachSnap.data() as Coach);
+          } else {
+            setSelectedCoach(null);
+          }
+        } catch (error) {
+          console.error("Error fetching selected coach:", error);
+          setSelectedCoach(null);
+        } finally {
+          setLoadingSelectedCoach(false);
+        }
+      } else {
+        setSelectedCoach(null);
+      }
+    };
+
+    fetchSelectedCoach();
+  }, [profile?.coachId]);
+
+  // Fetch all coaches when dialog opens
+  useEffect(() => {
+    const fetchCoaches = async () => {
+      if (coachDialogOpen && db) {
+        setLoadingCoaches(true);
+        try {
+          const coachesRef = collection(db, "coaches");
+          const coachesSnap = await getDocs(coachesRef);
+          const coachesList: Coach[] = [];
+          coachesSnap.forEach((doc) => {
+            coachesList.push(doc.data() as Coach);
+          });
+          setCoaches(coachesList);
+        } catch (error) {
+          console.error("Error fetching coaches:", error);
+          toast.error("Failed to load coaches.");
+        } finally {
+          setLoadingCoaches(false);
+        }
+      }
+    };
+
+    fetchCoaches();
+  }, [coachDialogOpen]);
 
   // Calculate total calories from macros
   const calculateMacroCalories = () => {
@@ -123,6 +196,17 @@ export default function ProfilePage() {
       ...prev,
       goalType: value,
     }));
+  };
+
+  const handleSelectCoach = async (coachId: string) => {
+    try {
+      await updateProfile({ coachId });
+      setCoachDialogOpen(false);
+      toast.success("Coach selected successfully!");
+    } catch (error) {
+      console.error("Error selecting coach:", error);
+      toast.error("Failed to select coach.");
+    }
   };
 
   return (
@@ -305,6 +389,106 @@ export default function ProfilePage() {
           </form>
         </CardContent>
       </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>AI Coach</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loadingSelectedCoach ? (
+            <div className="text-center py-4 text-muted-foreground">
+              Loading coach...
+            </div>
+          ) : selectedCoach ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <Avatar className="h-16 w-16">
+                  <AvatarImage src={selectedCoach.coach_picture} alt={selectedCoach.coach_name} />
+                  <AvatarFallback>{selectedCoach.coach_name.charAt(0)}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-lg">{selectedCoach.coach_name}</h3>
+                  <p className="text-sm text-muted-foreground">{selectedCoach.coach_persona}</p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setCoachDialogOpen(true)}
+              >
+                Change Coach
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Select an AI coach to help guide your fitness journey.
+              </p>
+              <Button
+                className="w-full"
+                onClick={() => setCoachDialogOpen(true)}
+              >
+                Select Coach
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={coachDialogOpen} onOpenChange={setCoachDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Select Your AI Coach</DialogTitle>
+            <DialogDescription>
+              Choose an AI coach that matches your fitness goals and personality.
+            </DialogDescription>
+          </DialogHeader>
+          {loadingCoaches ? (
+            <div className="text-center py-8 text-muted-foreground">
+              Loading coaches...
+            </div>
+          ) : coaches.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No coaches available.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+              {coaches.map((coach) => (
+                <Card
+                  key={coach.coach_id}
+                  className="cursor-pointer hover:border-primary transition-colors"
+                  onClick={() => handleSelectCoach(coach.coach_id)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-4">
+                      <Avatar className="h-12 w-12">
+                        <AvatarImage src={coach.coach_picture} alt={coach.coach_name} />
+                        <AvatarFallback>{coach.coach_name.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold mb-1">{coach.coach_name}</h3>
+                        <p className="text-sm text-muted-foreground line-clamp-3">
+                          {coach.coach_persona}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      className="w-full mt-4"
+                      variant={profile?.coachId === coach.coach_id ? "default" : "outline"}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSelectCoach(coach.coach_id);
+                      }}
+                    >
+                      {profile?.coachId === coach.coach_id ? "Selected" : "Select"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <div className="mt-6">
         <Button variant="destructive" className="w-full" onClick={signOut}>

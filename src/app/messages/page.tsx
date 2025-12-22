@@ -193,7 +193,7 @@ export default function MessagesPage() {
 
       {/* Message detail */}
       <ScrollArea className="h-[calc(100vh-64px)]">
-        <div className="p-4">
+        <div className="p-4 pb-8">
           <Card>
             <CardHeader>
               <div className="flex flex-col gap-4">
@@ -219,7 +219,7 @@ export default function MessagesPage() {
                 )}
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pb-8">
               <div className="markdown-content text-sm leading-relaxed">
                 <ReactMarkdown
                   components={{

@@ -5,19 +5,22 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs, Timestamp, setDoc, doc, getDoc } from "firebase/firestore";
-import { format, startOfWeek, endOfWeek, eachDayOfInterval } from "date-fns";
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, addDays, subDays } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, ChevronRight, TriangleAlertIcon } from "lucide-react";
 import { toast } from "sonner";
 
 export default function WeeklyCheckinPage() {
   const { user, profile } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [generatingMessage, setGeneratingMessage] = useState(false);
   const [checkingExisting, setCheckingExisting] = useState(true);
   const [hasExistingCheckin, setHasExistingCheckin] = useState(false);
+  const [missingDays, setMissingDays] = useState<Date[]>([]);
+  const [currentWeekStart, setCurrentWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [autoPopulated, setAutoPopulated] = useState({
     averageWeight: "",
     averageSteps: "",
@@ -39,12 +42,15 @@ export default function WeeklyCheckinPage() {
   });
 
   // Calculate current week (Monday-Sunday)
-  const today = new Date();
-  const weekStart = startOfWeek(today, { weekStartsOn: 1 });
-  const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
+  const weekStart = currentWeekStart;
+  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
   const weekStartDate = format(weekStart, "yyyy-MM-dd");
   const weekEndDate = format(weekEnd, "yyyy-MM-dd");
   const weekDisplay = `${format(weekStart, "dd/MM/yyyy")} - ${format(weekEnd, "dd/MM/yyyy")}`;
+
+  const handleWeekChange = (weeks: number) => {
+    setCurrentWeekStart((prev) => (weeks > 0 ? addDays(prev, 7 * weeks) : subDays(prev, 7 * Math.abs(weeks))));
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -79,6 +85,8 @@ export default function WeeklyCheckinPage() {
             cardioGoalAchieved: data.cardioGoalAchieved || "",
           });
           setHasExistingCheckin(true);
+          // Still check for missing daily checkins even when editing
+          await calculateAutoPopulated();
         } else {
           // Calculate auto-populated values
           await calculateAutoPopulated();
@@ -99,18 +107,26 @@ export default function WeeklyCheckinPage() {
         const weekDates = weekDays.map(day => format(day, "yyyy-MM-dd"));
 
         // Fetch daily checkins for the week
-        const dailyCheckinsPromises = weekDates.map(async (date) => {
+        const dailyCheckinsPromises = weekDates.map(async (date, index) => {
           const docId = `${user.uid}_${date}`;
           const docRef = doc(db, "daily_checkins", docId);
           const snapshot = await getDoc(docRef);
           if (snapshot.exists()) {
-            return snapshot.data();
+            return { data: snapshot.data(), date, day: weekDays[index] };
           }
-          return null;
+          return { data: null, date, day: weekDays[index] };
         });
 
         const dailyCheckinsResults = await Promise.all(dailyCheckinsPromises);
-        const dailyCheckins = dailyCheckinsResults.filter((checkin): checkin is NonNullable<typeof checkin> => checkin !== null);
+        const dailyCheckins = dailyCheckinsResults
+          .filter((result) => result.data !== null)
+          .map((result) => result.data);
+        
+        // Track missing days
+        const missing = dailyCheckinsResults
+          .filter((result) => result.data === null)
+          .map((result) => result.day);
+        setMissingDays(missing);
 
         // Calculate averages
         const weights = dailyCheckins
@@ -192,6 +208,13 @@ export default function WeeklyCheckinPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    
+    // Prevent submission if not all daily checkins are completed
+    if (missingDays.length > 0) {
+      toast.error("Please complete Daily Checkins for all days of the week before submitting.");
+      return;
+    }
+    
     setLoading(true);
 
     try {
@@ -228,6 +251,36 @@ export default function WeeklyCheckinPage() {
 
       setHasExistingCheckin(true);
       toast.success(hasExistingCheckin ? "Weekly checkin updated successfully!" : "Weekly checkin saved successfully!");
+      
+      // Generate AI coaching message
+      // Note: Set to always generate for testing. Change back to `if (!hasExistingCheckin)` for production
+      setGeneratingMessage(true);
+      try {
+        const response = await fetch('/api/generate-coaching-message', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: user.uid,
+            weekStartDate,
+          }),
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          toast.success("Your personalized coaching message has been generated! Check your Messages.");
+        } else {
+          const error = await response.json();
+          console.error('Error generating coaching message:', error);
+          toast.error("Weekly checkin saved, but failed to generate coaching message.");
+        }
+      } catch (error) {
+        console.error('Error calling coaching message API:', error);
+        toast.error("Weekly checkin saved, but failed to generate coaching message.");
+      } finally {
+        setGeneratingMessage(false);
+      }
     } catch (error) {
       console.error("Error saving weekly checkin:", error);
       toast.error("Failed to save weekly checkin.");
@@ -262,7 +315,44 @@ export default function WeeklyCheckinPage() {
         </div>
       </div>
 
+      {/* Week Navigation */}
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-background">
+        <Button variant="ghost" size="icon" onClick={() => handleWeekChange(-1)}>
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
+        <span className="text-base font-medium">
+          {weekDisplay}
+        </span>
+        <Button variant="ghost" size="icon" onClick={() => handleWeekChange(1)}>
+          <ChevronRight className="h-5 w-5" />
+        </Button>
+      </div>
+
       <div className="px-4 py-6">
+        {/* Warning for missing daily checkins */}
+        {missingDays.length > 0 && (
+          <Card className="mb-4 border-yellow-500/50 bg-yellow-500/10">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-3">
+                <TriangleAlertIcon className="h-5 w-5 text-yellow-600 dark:text-yellow-500 mt-0.5 flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <p className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
+                    Please complete Daily Checkins for all days of the week before submitting your Weekly Checkin.
+                  </p>
+                  <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                    Missing: {missingDays.map((day, index) => (
+                      <span key={format(day, "yyyy-MM-dd")}>
+                        {format(day, "EEEE")}
+                        {index < missingDays.length - 1 ? ", " : ""}
+                      </span>
+                    ))}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle>
@@ -461,8 +551,20 @@ export default function WeeklyCheckinPage() {
                 </div>
               </div>
 
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Saving..." : hasExistingCheckin ? "Update Weekly Checkin" : "Save Weekly Checkin"}
+              <Button 
+                type="submit" 
+                className="w-full" 
+                disabled={loading || generatingMessage || missingDays.length > 0}
+              >
+                {generatingMessage
+                  ? "Generating Coaching Message..."
+                  : loading 
+                  ? "Saving..." 
+                  : missingDays.length > 0
+                  ? "Complete All Daily Checkins First"
+                  : hasExistingCheckin 
+                  ? "Update Weekly Checkin" 
+                  : "Save Weekly Checkin"}
               </Button>
             </form>
           </CardContent>

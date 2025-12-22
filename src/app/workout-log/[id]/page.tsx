@@ -253,7 +253,16 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
       const updatedSet = updatedExercises[exerciseIndex].sets[setIndex];
       // Only check if weight and reps are valid
       if (updatedSet.weight > 0 && updatedSet.reps >= 1) {
-        const pbResult = await checkForPB(exercise.exerciseId, updatedSet, workout.date);
+        // Get all sets from current exercise (excluding the set being checked)
+        const otherSetsInCurrentExercise = updatedExercises[exerciseIndex].sets.filter(
+          (_, idx) => idx !== setIndex
+        );
+        const pbResult = await checkForPB(
+          exercise.exerciseId, 
+          updatedSet, 
+          workout.date,
+          otherSetsInCurrentExercise
+        );
         if (pbResult.isPB && pbResult.type) {
           // Mark set as PB
           updatedExercises[exerciseIndex].sets[setIndex] = {
@@ -352,7 +361,8 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
   const checkForPB = async (
     exerciseId: string,
     currentSet: WorkoutSet,
-    currentWorkoutDate: string
+    currentWorkoutDate: string,
+    currentWorkoutSets?: WorkoutSet[]
   ): Promise<{ isPB: boolean; type: "reps" | "weight" | null }> => {
     if (!user || !currentSet.weight || !currentSet.reps || currentSet.weight <= 0 || currentSet.reps < 1) {
       return { isPB: false, type: null };
@@ -387,6 +397,23 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
         }
       });
 
+      // Include completed sets from current workout (excluding the set being checked)
+      if (currentWorkoutSets) {
+        const otherCurrentSets = currentWorkoutSets.filter(
+          set => set.weight > 0 && set.reps >= 1 && set.completed
+        );
+        allHistoricalSets.push(...otherCurrentSets);
+      }
+
+      // Check if this is the highest weight ever lifted (for any reps)
+      const maxWeightEver = allHistoricalSets.length > 0 
+        ? Math.max(...allHistoricalSets.map(set => set.weight))
+        : 0;
+      
+      if (currentSet.weight > maxWeightEver) {
+        return { isPB: true, type: "weight" };
+      }
+
       // Check for "more reps at same weight" PB
       const setsAtSameWeight = allHistoricalSets.filter(
         set => set.weight === currentSet.weight
@@ -396,14 +423,6 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
         if (currentSet.reps > maxRepsAtWeight) {
           return { isPB: true, type: "reps" };
         }
-      }
-
-      // Check for "new weight" PB
-      const hasLiftedThisWeight = allHistoricalSets.some(
-        set => set.weight === currentSet.weight && set.reps >= 1
-      );
-      if (!hasLiftedThisWeight && currentSet.reps >= 1) {
-        return { isPB: true, type: "weight" };
       }
 
       return { isPB: false, type: null };
@@ -498,7 +517,16 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
           const set = exercise.sets[setIndex];
           // Only check completed sets that aren't already marked as PB and have valid data
           if (set.completed && !set.isPB && set.weight > 0 && set.reps >= 1) {
-            const pbResult = await checkForPB(exercise.exerciseId, set, workout.date);
+            // Get all sets from current exercise (excluding the set being checked)
+            const otherSetsInCurrentExercise = exercise.sets.filter(
+              (_, idx) => idx !== setIndex
+            );
+            const pbResult = await checkForPB(
+              exercise.exerciseId, 
+              set, 
+              workout.date,
+              otherSetsInCurrentExercise
+            );
             if (pbResult.isPB && pbResult.type) {
               updatedExercises[exerciseIndex].sets[setIndex] = {
                 ...set,
@@ -605,78 +633,81 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
               </div>
             </CardHeader>
             <CardContent className="p-0">
+               <div className="overflow-x-auto">
                <Table>
                  <TableHeader>
                    <TableRow>
-                     <TableHead className="w-[80px] text-center">Set</TableHead>
-                     <TableHead className="w-[100px] text-center">Type</TableHead>
-                     <TableHead className="text-center">kg</TableHead>
-                     <TableHead className="text-center">Reps</TableHead>
-                     <TableHead className="text-center">RPE</TableHead>
-                     <TableHead className="text-center">Done</TableHead>
-                     <TableHead className="w-[100px]"></TableHead>
+                     <TableHead className="w-[60px] text-center">Set</TableHead>
+                     <TableHead className="w-[60px] text-center">Type</TableHead>
+                     <TableHead className="text-center min-w-[70px]">kg</TableHead>
+                     <TableHead className="text-center min-w-[70px]">Reps</TableHead>
+                     <TableHead className="text-center min-w-[70px]">RPE</TableHead>
+                     <TableHead className="text-center w-[60px]">Done</TableHead>
+                     <TableHead className="w-[60px]"></TableHead>
                    </TableRow>
                  </TableHeader>
                  <TableBody>
                    {exercise.sets.map((set, setIndex) => (
                      <TableRow key={set.id}>
-                       <TableCell className="text-center font-medium">
+                       <TableCell className="text-center font-medium p-1">
+                         <div className="flex flex-col items-center justify-center gap-0.5">
+                           <span className="text-sm">{setIndex + 1}</span>
+                           {(set.dropset || set.superset) && (
+                             <div className="flex items-center gap-0.5">
+                               {set.dropset && (
+                                 <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 leading-none">
+                                   DS
+                                 </Badge>
+                               )}
+                               {set.superset && (
+                                 <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 leading-none">
+                                   SS
+                                 </Badge>
+                               )}
+                             </div>
+                           )}
+                         </div>
+                       </TableCell>
+                       <TableCell className="p-1">
                          <div className="flex items-center justify-center gap-1">
-                           <span>{setIndex + 1}</span>
-                           {set.dropset && (
-                             <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5">
-                               DS
-                             </Badge>
-                           )}
-                           {set.superset && (
-                             <Badge variant="outline" className="text-xs px-1.5 py-0 h-5">
-                               SS
-                             </Badge>
-                           )}
+                           <Checkbox
+                             checked={set.dropset || false}
+                             onCheckedChange={(checked) => 
+                               handleSetChange(exerciseIndex, setIndex, "dropset", checked)
+                             }
+                             className="h-4 w-4"
+                             aria-label="Dropset"
+                           />
+                           <Checkbox
+                             checked={set.superset || false}
+                             onCheckedChange={(checked) => 
+                               handleSetChange(exerciseIndex, setIndex, "superset", checked)
+                             }
+                             className="h-4 w-4"
+                             aria-label="Superset"
+                           />
                          </div>
                        </TableCell>
-                       <TableCell>
-                         <div className="flex items-center justify-center gap-2">
-                           <div className="flex flex-col items-center gap-1">
-                             <Checkbox
-                               checked={set.dropset || false}
-                               onCheckedChange={(checked) => 
-                                 handleSetChange(exerciseIndex, setIndex, "dropset", checked)
-                               }
-                             />
-                             <span className="text-xs text-muted-foreground">DS</span>
-                           </div>
-                           <div className="flex flex-col items-center gap-1">
-                             <Checkbox
-                               checked={set.superset || false}
-                               onCheckedChange={(checked) => 
-                                 handleSetChange(exerciseIndex, setIndex, "superset", checked)
-                               }
-                             />
-                             <span className="text-xs text-muted-foreground">SS</span>
-                           </div>
-                         </div>
-                       </TableCell>
-                       <TableCell>
+                       <TableCell className="p-1">
                          <Input 
                            type="number" 
-                           className="h-8 text-center" 
+                           className="h-8 text-center text-sm w-full" 
                            value={set.weight || ""} 
                            onChange={(e) => handleSetChange(exerciseIndex, setIndex, "weight", e.target.value)}
                          />
                        </TableCell>
-                       <TableCell>
+                       <TableCell className="p-1">
                          <Input 
                            type="number" 
-                           className="h-8 text-center" 
+                           className="h-8 text-center text-sm w-full" 
                            value={set.reps || ""} 
                            onChange={(e) => handleSetChange(exerciseIndex, setIndex, "reps", e.target.value)}
                          />
                        </TableCell>
-                       <TableCell>
+                       <TableCell className="p-1">
                          <Input 
                            type="number" 
-                           className="h-8 text-center" 
+                           className="h-8 text-center text-sm w-full" 
                            value={set.rpe || ""} 
                            onChange={(e) => handleSetChange(exerciseIndex, setIndex, "rpe", e.target.value)}
                          />
@@ -708,6 +739,7 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
                    ))}
                  </TableBody>
                </Table>
+               </div>
                <div className="p-4 border-t">
                  <Button 
                    variant="outline" 

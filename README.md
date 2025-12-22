@@ -10,6 +10,7 @@ A comprehensive SaaS coaching application built with Next.js, Firebase, and Shad
 - 🏃 **Cardio Log**: Track cardio sessions with heart rate and calories
 - ✅ **Daily Check-ins**: Monitor weight, steps, sleep, and training status
 - 📊 **Progress Tracking**: Visualize progress with charts and weekly summaries
+- 🤖 **AI Coach**: Get personalized weekly coaching messages powered by Firebase Genkit and Google Gemini
 - 📱 **Mobile Responsive**: Optimized for mobile devices
 
 ## Tech Stack
@@ -17,6 +18,7 @@ A comprehensive SaaS coaching application built with Next.js, Firebase, and Shad
 - **Framework**: Next.js 16
 - **UI**: ShadCN UI + Tailwind CSS
 - **Backend**: Firebase (Firestore + Authentication)
+- **AI**: Firebase Genkit with Google Gemini
 - **Charts**: Recharts
 - **Barcode Scanning**: html5-qrcode
 - **Date Handling**: date-fns
@@ -55,7 +57,13 @@ NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
 NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_storage_bucket
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
 NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
+GOOGLE_GENAI_API_KEY=your_gemini_api_key
 ```
+
+**To get your Gemini API Key:**
+1. Visit [Google AI Studio](https://ai.google.dev/)
+2. Sign in and click "Get API Key"
+3. Create a new API key and copy it
 
 5. Run the development server:
 ```bash

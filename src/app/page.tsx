@@ -9,7 +9,7 @@ import { format, startOfWeek, endOfWeek, eachDayOfInterval } from "date-fns";
 import { onSnapshot } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dumbbell, Utensils, Activity, CalendarCheck, TrendingUp, User, CreditCard, ChevronDown, ChevronUp, Droplet, Mail, Pill } from "lucide-react";
+import { Dumbbell, Utensils, Activity, CalendarCheck, TrendingUp, CreditCard, ChevronDown, ChevronUp, Droplet, Pill } from "lucide-react";
 
 interface WeeklyStats {
   avgCaloriesPerDay: number;
@@ -44,8 +44,6 @@ export default function Home() {
     { name: "Checkin", href: "/checkin", icon: CalendarCheck },
     { name: "Progress", href: "/progress", icon: TrendingUp },
     { name: "Cards", href: "/cards", icon: CreditCard },
-    { name: "Messages", href: "/messages", icon: Mail },
-    { name: "Profile", href: "/profile", icon: User },
   ];
 
   useEffect(() => {
@@ -222,7 +220,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col items-center">
       <header className="w-full max-w-md mb-6 mt-4 text-center">
-        <h1 className="text-3xl font-bold tracking-tight">Coaching App 😊</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Coaching App</h1>
         <p className="text-muted-foreground mt-2">Track your fitness journey</p>
       </header>
 
@@ -466,7 +464,7 @@ export default function Home() {
         </div>
       )}
 
-      <main className="w-full max-w-md grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <main className="w-full max-w-md grid grid-cols-2 gap-4">
         {menuItems.map((item) => (
           <Link key={item.href} href={item.href} className="w-full">
             <Button

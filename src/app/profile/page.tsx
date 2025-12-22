@@ -61,17 +61,21 @@ export default function ProfilePage() {
   });
 
   useEffect(() => {
-    if (profile?.goals) {
+    if (profile) {
+      // Check if goalType exists in goals object or at root level (for backwards compatibility)
+      const goalTypeRaw = profile.goals?.goalType || (profile as any).goalType || "";
+      const goalType = typeof goalTypeRaw === "string" ? goalTypeRaw.trim() : "";
+      
       setFormData({
-        goalType: profile.goals.goalType || "",
-        calorieLimit: profile.goals.calorieLimit?.toString() || "",
-        proteinGoal: profile.goals.proteinGoal?.toString() || "",
-        carbGoal: profile.goals.carbGoal?.toString() || "",
-        fatGoal: profile.goals.fatGoal?.toString() || "",
-        workoutSessionsPerWeek: profile.goals.workoutSessionsPerWeek?.toString() || "",
-        cardioSessionsPerWeek: profile.goals.cardioSessionsPerWeek?.toString() || "",
-        startingWeight: profile.goals.startingWeight?.toString() || "",
-        waterGoal: profile.goals.waterGoal?.toString() || "",
+        goalType: goalType,
+        calorieLimit: profile.goals?.calorieLimit?.toString() || "",
+        proteinGoal: profile.goals?.proteinGoal?.toString() || "",
+        carbGoal: profile.goals?.carbGoal?.toString() || "",
+        fatGoal: profile.goals?.fatGoal?.toString() || "",
+        workoutSessionsPerWeek: profile.goals?.workoutSessionsPerWeek?.toString() || "",
+        cardioSessionsPerWeek: profile.goals?.cardioSessionsPerWeek?.toString() || "",
+        startingWeight: profile.goals?.startingWeight?.toString() || "",
+        waterGoal: profile.goals?.waterGoal?.toString() || "",
       });
     }
   }, [profile]);
@@ -162,18 +166,50 @@ export default function ProfilePage() {
     }
     
     try {
+      // Build goals object with all fields
+      const goalsUpdate: any = {};
+      
+      // Only include goalType if it has a value (not empty string)
+      if (formData.goalType && formData.goalType.trim() !== "") {
+        goalsUpdate.goalType = formData.goalType as "Lose Weight" | "Gain Strength" | "Gain Weight";
+      }
+      
+      // Include all numeric fields (convert empty strings to numbers or undefined)
+      if (formData.calorieLimit !== "") {
+        const calorieLimit = Number(formData.calorieLimit);
+        if (!isNaN(calorieLimit)) goalsUpdate.calorieLimit = calorieLimit;
+      }
+      if (formData.proteinGoal !== "") {
+        const proteinGoal = Number(formData.proteinGoal);
+        if (!isNaN(proteinGoal)) goalsUpdate.proteinGoal = proteinGoal;
+      }
+      if (formData.carbGoal !== "") {
+        const carbGoal = Number(formData.carbGoal);
+        if (!isNaN(carbGoal)) goalsUpdate.carbGoal = carbGoal;
+      }
+      if (formData.fatGoal !== "") {
+        const fatGoal = Number(formData.fatGoal);
+        if (!isNaN(fatGoal)) goalsUpdate.fatGoal = fatGoal;
+      }
+      if (formData.workoutSessionsPerWeek !== "") {
+        const workoutSessionsPerWeek = Number(formData.workoutSessionsPerWeek);
+        if (!isNaN(workoutSessionsPerWeek)) goalsUpdate.workoutSessionsPerWeek = workoutSessionsPerWeek;
+      }
+      if (formData.cardioSessionsPerWeek !== "") {
+        const cardioSessionsPerWeek = Number(formData.cardioSessionsPerWeek);
+        if (!isNaN(cardioSessionsPerWeek)) goalsUpdate.cardioSessionsPerWeek = cardioSessionsPerWeek;
+      }
+      if (formData.startingWeight !== "") {
+        const startingWeight = Number(formData.startingWeight);
+        if (!isNaN(startingWeight)) goalsUpdate.startingWeight = startingWeight;
+      }
+      if (formData.waterGoal !== "") {
+        const waterGoal = Number(formData.waterGoal);
+        if (!isNaN(waterGoal)) goalsUpdate.waterGoal = waterGoal;
+      }
+      
       await updateProfile({
-        goals: {
-          goalType: formData.goalType as "Lose Weight" | "Gain Strength" | "Gain Weight",
-          calorieLimit: Number(formData.calorieLimit),
-          proteinGoal: Number(formData.proteinGoal),
-          carbGoal: Number(formData.carbGoal),
-          fatGoal: Number(formData.fatGoal),
-          workoutSessionsPerWeek: Number(formData.workoutSessionsPerWeek),
-          cardioSessionsPerWeek: Number(formData.cardioSessionsPerWeek),
-          startingWeight: Number(formData.startingWeight),
-          waterGoal: Number(formData.waterGoal) || undefined,
-        },
+        goals: goalsUpdate,
       });
       toast.success("Profile updated successfully!");
     } catch (error) {
@@ -244,6 +280,7 @@ export default function ProfilePage() {
             <div className="space-y-2">
               <Label htmlFor="goalType">Main Goal</Label>
               <Select
+                key={formData.goalType || "empty"}
                 value={formData.goalType}
                 onValueChange={handleSelectChange}
               >

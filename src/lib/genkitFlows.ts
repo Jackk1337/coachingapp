@@ -351,7 +351,14 @@ Format your response as JSON with "subject" and "body" fields. The body should s
       return await ai.generate(prompt);
     }, 3, 2000); // 3 retries, starting with 2 second delay
 
-    const responseText = response.text;
+    let responseText = response.text;
+    
+    // Clean up markdown code blocks if present (AI sometimes wraps JSON in ```json ... ```)
+    responseText = responseText
+      .replace(/^```json\s*/i, '') // Remove opening ```json
+      .replace(/^```\s*/i, '') // Remove opening ``` (fallback)
+      .replace(/\s*```$/i, '') // Remove closing ```
+      .trim();
     
     // Try to parse JSON response
     try {

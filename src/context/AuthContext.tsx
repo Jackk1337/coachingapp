@@ -8,7 +8,7 @@ import {
   signOut as firebaseSignOut 
 } from "firebase/auth";
 import { auth, googleProvider, db } from "@/lib/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 
 interface UserProfile {
   uid: string;
@@ -57,7 +57,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     // Only run on client-side
     if (typeof window === 'undefined') {
-      setLoading(false);
+      // Use setTimeout to avoid synchronous setState in effect
+      setTimeout(() => setLoading(false), 0);
       return;
     }
 
@@ -127,8 +128,37 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const updateProfile = async (data: Partial<UserProfile>) => {
     if (!user || !db) return;
     const userRef = doc(db, "users", user.uid);
-    await setDoc(userRef, data, { merge: true });
-    setProfile((prev) => (prev ? { ...prev, ...data } : null));
+    
+    // If updating goals, merge with existing goals to preserve other goal fields
+    if (data.goals) {
+      const userSnap = await getDoc(userRef);
+      const existingData = userSnap.exists() ? userSnap.data() : {};
+      const existingGoals = (existingData as UserProfile).goals || {};
+      
+      // Merge existing goals with new goals (new goals take precedence)
+      const mergedGoals = { ...existingGoals, ...data.goals };
+      
+      // Prepare update data with merged goals
+      const updateData = { ...data, goals: mergedGoals };
+      
+      // Use setDoc with merge to update the document
+      await setDoc(userRef, updateData, { merge: true });
+      
+      // Refetch the profile from Firestore to ensure we have the latest data
+      const updatedSnap = await getDoc(userRef);
+      if (updatedSnap.exists()) {
+        setProfile(updatedSnap.data() as UserProfile);
+      }
+    } else {
+      // For non-nested updates, use setDoc with merge
+      await setDoc(userRef, data, { merge: true });
+      
+      // Refetch the profile from Firestore to ensure we have the latest data
+      const updatedSnap = await getDoc(userRef);
+      if (updatedSnap.exists()) {
+        setProfile(updatedSnap.data() as UserProfile);
+      }
+    }
   };
 
   return (

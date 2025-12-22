@@ -46,8 +46,11 @@ export default function SupplementsPage() {
   // Fetch supplements and supplement logs for selected date
   useEffect(() => {
     if (!user) {
-      setSupplements([]);
-      setSupplementLogs([]);
+      // Use setTimeout to avoid synchronous setState in effect
+      setTimeout(() => {
+        setSupplements([]);
+        setSupplementLogs([]);
+      }, 0);
       return;
     }
 

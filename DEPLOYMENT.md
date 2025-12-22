@@ -68,6 +68,21 @@ NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
 NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 ```
 
+### Required AI/Genkit Environment Variables:
+
+```
+GOOGLE_GENAI_API_KEY=your_gemini_api_key
+```
+
+**Where to get the Gemini API Key:**
+1. Go to [Google AI Studio](https://ai.google.dev/)
+2. Sign in with your Google account
+3. Click "Get API Key" and create a new API key
+4. Copy the generated API key
+5. Add it to your Vercel environment variables
+
+**Note:** You can also use `GEMINI_API_KEY` as an alternative environment variable name (both are supported).
+
 **Where to find these values:**
 1. Go to [Firebase Console](https://console.firebase.google.com/)
 2. Select your project

@@ -399,3 +399,4 @@ Format your response as JSON with "subject" and "body" fields. The body should s
     throw new Error(`Failed to generate coaching message: ${error?.message || 'Unknown error'}`);
   }
 }
+

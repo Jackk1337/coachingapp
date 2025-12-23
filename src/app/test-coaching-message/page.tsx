@@ -27,13 +27,16 @@ export default function TestCoachingMessagePage() {
 
     setLoading(true);
     try {
+      // Get ID token for authentication
+      const idToken = await user.getIdToken();
+      
       const response = await fetch('/api/generate-coaching-message', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
         },
         body: JSON.stringify({
-          userId: user.uid,
           weekStartDate,
         }),
       });
@@ -118,3 +121,4 @@ export default function TestCoachingMessagePage() {
     </div>
   );
 }
+

@@ -187,7 +187,8 @@ export default function FoodDiaryPage() {
     if (!user) return;
 
     const foodLibraryRef = collection(db, "food_library");
-    const unsubscribe = onSnapshot(foodLibraryRef, (snapshot) => {
+    const q = query(foodLibraryRef, where("userId", "==", user.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       const foods: Food[] = [];
       snapshot.forEach((doc) => {
         foods.push({ id: doc.id, ...doc.data() } as Food);
@@ -1491,9 +1492,20 @@ export default function FoodDiaryPage() {
 
     setBarcodeSearchLoading(true);
     try {
+      if (!user) {
+        toast.error("Please log in to search for foods");
+        setBarcodeSearchLoading(false);
+        return;
+      }
+      
       // First, search in food_library collection for matching barcode
+      // Filter by userId to ensure security rules pass
       const foodLibraryRef = collection(db, "food_library");
-      const q = query(foodLibraryRef, where("barcode", "==", barcodeToSearch));
+      const q = query(
+        foodLibraryRef, 
+        where("barcode", "==", barcodeToSearch),
+        where("userId", "==", user.uid)
+      );
       
       const querySnapshot = await getDocs(q);
       

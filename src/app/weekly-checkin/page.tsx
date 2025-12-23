@@ -256,13 +256,16 @@ export default function WeeklyCheckinPage() {
       // Note: Set to always generate for testing. Change back to `if (!hasExistingCheckin)` for production
       setGeneratingMessage(true);
       try {
+        // Get ID token for authentication
+        const idToken = await user.getIdToken();
+        
         const response = await fetch('/api/generate-coaching-message', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`,
           },
           body: JSON.stringify({
-            userId: user.uid,
             weekStartDate,
           }),
         });

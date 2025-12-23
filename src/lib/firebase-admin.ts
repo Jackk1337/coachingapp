@@ -57,5 +57,19 @@ export function getAdminDb(): Firestore {
   return adminDb;
 }
 
+/**
+ * Get the Auth admin instance (server-side only)
+ * Throws an error if called on client-side or if not initialized
+ */
+export function getAdminAuth(): Auth {
+  if (typeof window !== 'undefined') {
+    throw new Error('Firebase Admin SDK can only be used server-side');
+  }
+  if (!adminAuth) {
+    throw new Error('Firebase Admin SDK not initialized. Check your environment variables.');
+  }
+  return adminAuth;
+}
+
 export { adminAuth, adminDb };
 

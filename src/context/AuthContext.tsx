@@ -16,6 +16,8 @@ interface UserProfile {
   displayName: string | null;
   photoURL: string | null;
   coachId?: string;
+  experienceLevel?: "Novice" | "Beginner" | "Intermediate" | "Advanced";
+  coachIntensity?: "Low" | "Medium" | "High" | "Extreme";
   goals?: {
     goalType: "Lose Weight" | "Gain Strength" | "Gain Weight";
     calorieLimit: number;

@@ -58,6 +58,8 @@ export default function ProfilePage() {
     cardioSessionsPerWeek: "",
     startingWeight: "",
     waterGoal: "",
+    experienceLevel: "",
+    coachIntensity: "",
   });
 
   useEffect(() => {
@@ -76,6 +78,8 @@ export default function ProfilePage() {
         cardioSessionsPerWeek: profile.goals?.cardioSessionsPerWeek?.toString() || "",
         startingWeight: profile.goals?.startingWeight?.toString() || "",
         waterGoal: profile.goals?.waterGoal?.toString() || "",
+        experienceLevel: profile.experienceLevel || "",
+        coachIntensity: profile.coachIntensity || "",
       });
     }
   }, [profile]);
@@ -208,9 +212,17 @@ export default function ProfilePage() {
         if (!isNaN(waterGoal)) goalsUpdate.waterGoal = waterGoal;
       }
       
-      await updateProfile({
+      // Prepare update object with goals and experienceLevel
+      const updateData: any = {
         goals: goalsUpdate,
-      });
+      };
+      
+      // Include experienceLevel if it has a value
+      if (formData.experienceLevel && formData.experienceLevel.trim() !== "") {
+        updateData.experienceLevel = formData.experienceLevel as "Novice" | "Beginner" | "Intermediate" | "Advanced";
+      }
+      
+      await updateProfile(updateData);
       toast.success("Profile updated successfully!");
     } catch (error) {
       console.error("Error updating profile:", error);
@@ -420,6 +432,33 @@ export default function ProfilePage() {
               </p>
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="experienceLevel">Experience Level</Label>
+              <Select
+                key={formData.experienceLevel || "empty"}
+                value={formData.experienceLevel}
+                onValueChange={(value) => setFormData((prev) => ({ ...prev, experienceLevel: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select your experience level" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Novice">Novice</SelectItem>
+                  <SelectItem value="Beginner">Beginner</SelectItem>
+                  <SelectItem value="Intermediate">Intermediate</SelectItem>
+                  <SelectItem value="Advanced">Advanced</SelectItem>
+                </SelectContent>
+              </Select>
+              {formData.experienceLevel && (
+                <p className="text-xs text-muted-foreground">
+                  {formData.experienceLevel === "Novice" && "I am completely new to calorie counting, macros, being in the gym and don't really know what I am doing."}
+                  {formData.experienceLevel === "Beginner" && "I know a little bit about calorie counting, macros, the gym but still don't know what I'm doing."}
+                  {formData.experienceLevel === "Intermediate" && "I know about calorie counting, macros, the gym and require feedback."}
+                  {formData.experienceLevel === "Advanced" && "I know about calorie counting, macros, the gym and require feedback."}
+                </p>
+              )}
+            </div>
+
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Saving..." : "Save Changes"}
             </Button>
@@ -469,6 +508,32 @@ export default function ProfilePage() {
               </Button>
             </div>
           )}
+          
+          <div className="mt-6 pt-6 border-t space-y-2">
+            <Label htmlFor="coachIntensity">Coach Intensity</Label>
+            <Select
+              key={formData.coachIntensity || "empty"}
+              value={formData.coachIntensity}
+              onValueChange={(value) => {
+                setFormData((prev) => ({ ...prev, coachIntensity: value }));
+                // Save immediately when changed
+                updateProfile({ coachIntensity: value as "Low" | "Medium" | "High" | "Extreme" });
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select coach intensity" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Low">Low</SelectItem>
+                <SelectItem value="Medium">Medium</SelectItem>
+                <SelectItem value="High">High</SelectItem>
+                <SelectItem value="Extreme">Extreme</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              This affects how intense and motivational your coach will be.
+            </p>
+          </div>
         </CardContent>
       </Card>
 

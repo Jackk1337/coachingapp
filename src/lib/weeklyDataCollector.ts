@@ -9,6 +9,11 @@ export interface WeeklyData {
   cardioLogs: any[];
   waterLogs: any[];
   userProfile: any;
+  previousMessage: {
+    subject: string;
+    body: string;
+    createdAt: Date;
+  } | null;
 }
 
 /**
@@ -111,6 +116,60 @@ export async function collectWeeklyData(
     ? userProfileSnap.data()
     : null;
 
+  // Fetch previous week's coaching message
+  // Calculate the start of the current week to find messages before it
+  const currentWeekStart = new Date(weekStartDate + 'T00:00:00');
+  let previousMessage: { subject: string; body: string; createdAt: Date } | null = null;
+  
+  try {
+    // Query for the most recent message before the current week
+    const messagesQuery = adminDb.collection('messages')
+      .where('userId', '==', userId)
+      .where('createdAt', '<', currentWeekStart)
+      .orderBy('createdAt', 'desc')
+      .limit(1);
+    
+    const messagesSnapshot = await messagesQuery.get();
+    
+    if (!messagesSnapshot.empty) {
+      const messageDoc = messagesSnapshot.docs[0];
+      const messageData = messageDoc.data();
+      previousMessage = {
+        subject: messageData.subject || '',
+        body: messageData.body || '',
+        createdAt: messageData.createdAt?.toDate() || new Date(),
+      };
+    }
+  } catch (error) {
+    // If query fails (e.g., no index for createdAt), try alternative approach
+    // Get all messages and filter client-side (less efficient but works)
+    try {
+      const allMessagesQuery = adminDb.collection('messages')
+        .where('userId', '==', userId)
+        .orderBy('createdAt', 'desc')
+        .limit(10);
+      
+      const allMessagesSnapshot = await allMessagesQuery.get();
+      
+      for (const doc of allMessagesSnapshot.docs) {
+        const messageData = doc.data();
+        const messageDate = messageData.createdAt?.toDate();
+        
+        if (messageDate && messageDate < currentWeekStart) {
+          previousMessage = {
+            subject: messageData.subject || '',
+            body: messageData.body || '',
+            createdAt: messageDate,
+          };
+          break;
+        }
+      }
+    } catch (fallbackError) {
+      // If both queries fail, continue without previous message
+      console.error('Error fetching previous message:', fallbackError);
+    }
+  }
+
   return {
     weeklyCheckin,
     dailyCheckins,
@@ -119,6 +178,7 @@ export async function collectWeeklyData(
     cardioLogs,
     waterLogs,
     userProfile,
+    previousMessage,
   };
 }
 

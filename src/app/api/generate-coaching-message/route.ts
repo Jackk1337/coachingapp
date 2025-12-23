@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { collectWeeklyData } from '@/lib/weeklyDataCollector';
 import { generateCoachingMessage } from '@/lib/genkitFlows';
-import { db } from '@/lib/firebase';
-import { collection, addDoc, Timestamp, doc, getDoc } from 'firebase/firestore';
+import { getAdminDb } from '@/lib/firebase-admin';
 import { verifyAuth } from '@/lib/api-auth';
 import { generateCoachingMessageSchema } from '@/lib/validation';
 import { ratelimit } from '@/lib/ratelimit';
@@ -176,16 +175,16 @@ export async function POST(request: NextRequest) {
     const coachId = weeklyData.userProfile?.coachId || 'AI Coach';
     
     // Fetch coach name and persona from coaches collection BEFORE generating message
+    const adminDb = getAdminDb();
     let coachName = 'AI Coach';
     let coachPersona = '';
     if (coachId && coachId !== 'AI Coach') {
       try {
-        const coachRef = doc(db, 'coaches', coachId);
-        const coachSnap = await getDoc(coachRef);
-        if (coachSnap.exists()) {
+        const coachSnap = await adminDb.collection('coaches').doc(coachId).get();
+        if (coachSnap.exists) {
           const coachData = coachSnap.data();
-          coachName = coachData.coach_name || coachId;
-          coachPersona = coachData.coach_persona || '';
+          coachName = coachData?.coach_name || coachId;
+          coachPersona = coachData?.coach_persona || '';
         }
       } catch (error) {
         logger.error('Error fetching coach data', error, { coachId });
@@ -230,14 +229,14 @@ export async function POST(request: NextRequest) {
 
     // Save message to Firestore
     logger.info('Saving message to Firestore', { userId });
-    const messageRef = await addDoc(collection(db, 'messages'), {
+    const messageRef = await adminDb.collection('messages').add({
       userId,
       subject,
       body: messageBody,
       coach_id: coachId,
       coach_name: coachName,
       read: false,
-      createdAt: Timestamp.now(),
+      createdAt: new Date(),
     });
 
     logger.info('Coaching message generated successfully', {

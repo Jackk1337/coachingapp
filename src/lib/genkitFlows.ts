@@ -6,14 +6,24 @@ import { WeeklyData } from './weeklyDataCollector';
  * Formats weekly data into a structured string for AI analysis
  */
 function formatWeeklyDataForAI(data: WeeklyData): string {
-  const { weeklyCheckin, dailyCheckins, foodDiaries, workoutLogs, cardioLogs, waterLogs, userProfile } = data;
+  const { weeklyCheckin, dailyCheckins, foodDiaries, workoutLogs, cardioLogs, waterLogs, userProfile, previousMessage } = data;
 
   let formatted = '=== WEEKLY DATA SUMMARY ===\n\n';
+
+  // Previous Week's Coaching Message
+  if (previousMessage) {
+    formatted += 'PREVIOUS WEEK\'S COACHING MESSAGE:\n';
+    formatted += `Subject: ${previousMessage.subject}\n`;
+    formatted += `Message Body:\n${previousMessage.body}\n\n`;
+    formatted += 'IMPORTANT: Review what you said last week and reference it in your current response. Follow up on specific promises, threats, or challenges you made. Hold them accountable to what you said.\n\n';
+  }
 
   // User Profile & Goals
   if (userProfile) {
     formatted += 'USER PROFILE:\n';
     formatted += `- Coach ID: ${userProfile.coachId || 'AI Coach'}\n`;
+    formatted += `- Experience Level: ${userProfile.experienceLevel || 'Not set'}\n`;
+    formatted += `- Coach Intensity: ${userProfile.coachIntensity || 'Not set'}\n`;
     formatted += `- Goal Type: ${userProfile.goals?.goalType || 'Not set'}\n`;
     formatted += `- Calorie Limit: ${userProfile.goals?.calorieLimit || 'Not set'}\n`;
     formatted += `- Protein Goal: ${userProfile.goals?.proteinGoal || 'Not set'}g\n`;
@@ -257,9 +267,35 @@ export async function generateCoachingMessage(
     ? `\n\nIMPORTANT: Adopt the persona of ${coachName}. ${coachPersona}\n\nYour coaching style, tone, and approach should reflect this persona while maintaining professionalism and providing expert fitness and nutrition guidance.`
     : '';
 
+  // Build experience level instruction
+  const experienceLevel = data.userProfile?.experienceLevel || 'Not set';
+  let experienceInstruction = '';
+  if (experienceLevel === 'Novice') {
+    experienceInstruction = '\n\nEXPERIENCE LEVEL: The client is a NOVICE - they are completely new to calorie counting, macros, and the gym. You MUST:\n- Explain ALL concepts thoroughly (what calories are, what macros are, why they matter)\n- Define all terminology (calories, macros, protein, carbs, fats, etc.)\n- Provide basic education and foundational knowledge\n- Break down complex concepts into simple, digestible explanations\n- Assume they know very little and need comprehensive guidance';
+  } else if (experienceLevel === 'Beginner') {
+    experienceInstruction = '\n\nEXPERIENCE LEVEL: The client is a BEGINNER - they know a little bit about calorie counting, macros, and the gym but still don\'t know what they\'re doing. You MUST:\n- Explain concepts but assume some basic knowledge\n- Can use terminology but should briefly explain when introducing new concepts\n- Provide guidance with moderate detail\n- Help them understand the "why" behind recommendations';
+  } else if (experienceLevel === 'Intermediate') {
+    experienceInstruction = '\n\nEXPERIENCE LEVEL: The client is INTERMEDIATE - they know about calorie counting, macros, and the gym and require feedback. You MUST:\n- Assume knowledge of basic concepts\n- Focus on optimization, fine-tuning, and advanced strategies\n- Provide detailed feedback without basic explanations\n- Focus on the "how" and "what" rather than the "why"';
+  } else if (experienceLevel === 'Advanced') {
+    experienceInstruction = '\n\nEXPERIENCE LEVEL: The client is ADVANCED - they know about calorie counting, macros, and the gym and require feedback. You MUST:\n- Provide minimal explanations of basic concepts\n- Focus on advanced strategies, optimization, and fine-tuning\n- Use technical terminology freely\n- Provide sophisticated, nuanced feedback';
+  }
+
+  // Build coach intensity instruction
+  const coachIntensity = data.userProfile?.coachIntensity || 'Not set';
+  let intensityInstruction = '';
+  if (coachIntensity === 'Low') {
+    intensityInstruction = '\n\nCOACH INTENSITY: LOW - You should be:\n- Supportive, gentle, and understanding\n- Less pushy when goals aren\'t met\n- Focus on encouragement and positive reinforcement\n- Use a softer, more empathetic tone\n- Acknowledge challenges without being demanding';
+  } else if (coachIntensity === 'Medium') {
+    intensityInstruction = '\n\nCOACH INTENSITY: MEDIUM - You should be:\n- Balanced in your approach\n- Encouraging but firm when needed\n- Hold them accountable while remaining supportive\n- Use a professional, motivational tone\n- Push appropriately but not excessively';
+  } else if (coachIntensity === 'High') {
+    intensityInstruction = '\n\nCOACH INTENSITY: HIGH - You should be:\n- More direct and assertive\n- Push harder when goals aren\'t met\n- Use strong motivational language\n- Hold them strictly accountable\n- Challenge them to do better\n- Use a more intense, driven tone while remaining professional';
+  } else if (coachIntensity === 'Extreme') {
+    intensityInstruction = '\n\nCOACH INTENSITY: EXTREME - You should be:\n- Do NOT hold back - be brutally honest and direct\n- SWEARING IS ALLOWED AND ENCOURAGED - use profanity freely (fuck, shit, damn, etc.) to emphasize your points\n- Use harsh, critical language when goals aren\'t met\n- Insult and call out their failures directly with strong language\n- Use aggressive, confrontational language\n- Dig deep into their mistakes and failures\n- Be extremely demanding and unforgiving\n- Use profanity and harsh criticism liberally - this is EXTREME intensity\n- Make them feel the weight of their failures with strong, explicit language\n- Push them relentlessly with no sugar-coating\n- Curse at them when they mess up - be raw and unfiltered';
+  }
+
   const prompt = `You are the AI Coach "${coachName}", adopt their persona.${personaInstruction}
 
-CRITICAL: The client's primary goal is "${data.userProfile?.goals?.goalType || 'Not specified'}". ALL of your feedback must be tailored to support this specific goal. Whether they're trying to lose weight, gain strength, or gain weight, your recommendations should align with their goal type.
+CRITICAL: The client's primary goal is "${data.userProfile?.goals?.goalType || 'Not specified'}". ALL of your feedback must be tailored to support this specific goal. Whether they're trying to lose weight, gain strength, or gain weight, your recommendations should align with their goal type.${experienceInstruction}${intensityInstruction}
 
 Provide thoughtful, personalized analysis with actionable insights. Focus on patterns, trends, and qualitative observations rather than overwhelming with numbers and percentages. Use data to inform your feedback, but communicate it in a natural, conversational way.
 
@@ -267,9 +303,9 @@ Analyze the following weekly data from your client:
 
 ${formattedData}
 
-IMPORTANT: Structure your coaching message with the following sections in this exact order. Each section should be thoughtful and personalized:
+${data.previousMessage ? 'CRITICAL: You have access to your PREVIOUS WEEK\'S COACHING MESSAGE above. You MUST:\n- Reference specific things you said last week (promises, threats, challenges, goals you set)\n- Follow up on whether they met the expectations you set\n- Hold them accountable to what you said\n- If you made specific threats or promises (e.g., "If I see X next week, I\'m going to Y"), address whether they happened\n- Reference your previous coaching style and maintain continuity\n- Build on what you said before - don\'t ignore your previous message\n\n' : ''}IMPORTANT: Structure your coaching message with the following sections in this exact order. Each section should be thoughtful and personalized:
 
-Start with a warm greeting (2-3 sentences) - address the client by name if available, reference the specific week being reviewed, and set a warm, professional tone. Do NOT use a header for this greeting - just begin the message naturally.
+Start with a greeting (2-3 sentences)${data.previousMessage ? ' that references your previous message' : ''} - address the client by name if available, reference the specific week being reviewed${data.previousMessage ? ', and acknowledge what you said last week' : ''}. Set an appropriate tone based on coach intensity. Do NOT use a header for this greeting - just begin the message naturally.
 
 1. **Food Diary Feedback** (150-250 words minimum)
    REQUIRED ANALYSIS:

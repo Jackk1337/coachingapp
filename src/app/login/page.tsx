@@ -152,9 +152,10 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await signUpWithGoogle();
-      // After Google sign-up, we always need to collect date of birth
+      // After Google sign-up, redirect to onboarding to collect date of birth
       // since Google doesn't provide it
-      setShowDobDialog(true);
+      toast.success("Account created successfully! Please complete your onboarding.");
+      router.push("/onboarding");
     } catch (error: any) {
       console.error("Google sign up error:", error);
       console.error("Error code:", error?.code);
@@ -173,26 +174,6 @@ export default function LoginPage() {
       }
       
       toast.error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDobSubmit = async () => {
-    if (!googleDob) {
-      toast.error("Please enter your date of birth");
-      return;
-    }
-    
-    setLoading(true);
-    try {
-      await updateProfile({ dateOfBirth: googleDob });
-      setShowDobDialog(false);
-      toast.success("Account created! Please complete your onboarding.");
-      router.push("/onboarding");
-    } catch (error: any) {
-      console.error("Error updating date of birth:", error);
-      toast.error("Failed to save date of birth. Please try again.");
     } finally {
       setLoading(false);
     }

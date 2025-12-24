@@ -49,12 +49,12 @@ const nextConfig: NextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://apis.google.com https://*.googleapis.com",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: https:",
               "font-src 'self' data:",
-              "connect-src 'self' https://*.firebaseapp.com https://*.googleapis.com https://*.firebaseio.com https://*.upstash.io",
-              "frame-src 'self'",
+              "connect-src 'self' https://*.firebaseapp.com https://*.googleapis.com https://*.firebaseio.com https://*.upstash.io https://accounts.google.com https://world.openfoodfacts.org",
+              "frame-src 'self' https://accounts.google.com https://*.googleapis.com https://*.firebaseapp.com",
             ].join('; ')
           },
           {

@@ -1269,10 +1269,45 @@ export default function FoodDiaryPage() {
   // Fetch food from Open Food Facts API
   const fetchFromOpenFoodFacts = async (barcode: string): Promise<Partial<Food> | null> => {
     try {
-      const response = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
+      // Clean and validate barcode
+      const cleanBarcode = barcode.trim();
+      if (!cleanBarcode) {
+        console.error("Empty barcode provided");
+        return null;
+      }
+
+      const apiUrl = `https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(cleanBarcode)}.json`;
+      console.log("Fetching from OpenFoodFacts:", apiUrl);
+      
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+
+      // Check if response is OK
+      if (!response.ok) {
+        console.error(`OpenFoodFacts API error: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        console.error("Error response body:", errorText);
+        return null;
+      }
+
+      // Check content type
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        console.error(`Unexpected content type: ${contentType}`);
+        const text = await response.text();
+        console.error("Response body:", text);
+        return null;
+      }
+
       const data = await response.json();
+      console.log("OpenFoodFacts API response:", data);
 
       if (data.status === 0 || !data.product) {
+        console.log("Product not found in OpenFoodFacts database");
         return null; // Product not found
       }
 
@@ -1335,6 +1370,11 @@ export default function FoodDiaryPage() {
       };
     } catch (error) {
       console.error("Error fetching from Open Food Facts:", error);
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        console.error("Network error - check internet connection or CORS settings");
+      } else if (error instanceof SyntaxError) {
+        console.error("Failed to parse JSON response from OpenFoodFacts");
+      }
       return null;
     }
   };
@@ -1399,10 +1439,12 @@ export default function FoodDiaryPage() {
         config,
         async (decodedText) => {
           // Successfully scanned
+          console.log("Barcode scanned:", decodedText);
           setBarcodeInput(decodedText);
           await stopScanner();
           // Small delay to ensure scanner is stopped before searching
           setTimeout(() => {
+            console.log("Calling handleBarcodeSearch with:", decodedText);
             handleBarcodeSearch(decodedText);
           }, 100);
         },
@@ -1535,7 +1577,9 @@ export default function FoodDiaryPage() {
         toast.success("Food found in your library!");
         } else {
           // Not found locally, try Open Food Facts API
+          console.log("Searching OpenFoodFacts API for barcode:", barcodeToSearch);
           const apiFood = await fetchFromOpenFoodFacts(barcodeToSearch);
+          console.log("OpenFoodFacts API result:", apiFood);
           
           if (apiFood) {
             // Found in API, automatically save to database

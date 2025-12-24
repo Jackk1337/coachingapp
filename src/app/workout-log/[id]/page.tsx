@@ -20,8 +20,18 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, Plus, Trash2, Save, History, Search, Trophy } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { ChevronLeft, Plus, Trash2, Save, History, Search, Trophy, Calculator, MoreVertical } from "lucide-react";
 import { toast } from "sonner";
+import { calculateExerciseStats, generateRepCalculations, type RepCalculation } from "@/lib/rep-calculator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface WorkoutSet {
   id: string;
@@ -47,6 +57,14 @@ interface WorkoutLog {
   date: string;
   status: "in_progress" | "completed";
   exercises: WorkoutExercise[];
+  difficultyRating?: number; // 1-10
+  feedbackNotes?: string;
+  pbsAchieved?: Array<{
+    exerciseName: string;
+    type: "reps" | "weight";
+    weight: number;
+    reps: number;
+  }>;
 }
 
 interface ExerciseHistoryEntry {
@@ -100,6 +118,26 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
     exerciseName: string;
     weight: number;
     reps: number;
+  } | null>(null);
+  const [repCalculatorOpen, setRepCalculatorOpen] = useState(false);
+  const [repCalculatorData, setRepCalculatorData] = useState<{
+    exerciseId: string;
+    exerciseName: string;
+    calculations: RepCalculation[];
+    stats: ReturnType<typeof calculateExerciseStats>;
+  } | null>(null);
+  const [workoutCompletionDialogOpen, setWorkoutCompletionDialogOpen] = useState(false);
+  const [workoutDifficultyRating, setWorkoutDifficultyRating] = useState(5);
+  const [workoutFeedbackNotes, setWorkoutFeedbackNotes] = useState("");
+  const [workoutPBs, setWorkoutPBs] = useState<Array<{
+    exerciseName: string;
+    type: "reps" | "weight";
+    weight: number;
+    reps: number;
+  }>>([]);
+  const [pendingWorkoutData, setPendingWorkoutData] = useState<{
+    updatedExercises: WorkoutExercise[];
+    hasNewPB: boolean;
   } | null>(null);
 
   // Ref to keep track of latest workout state for the debounce save
@@ -358,6 +396,62 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
     }
   };
 
+  const handleOpenRepCalculator = async (exerciseId: string, exerciseName: string) => {
+    if (!user) return;
+    
+    setRepCalculatorOpen(true);
+    setLoadingHistory(true);
+
+    try {
+      // Fetch all completed workouts for this user
+      const workoutsQuery = query(
+        collection(db, "workout_logs"),
+        where("userId", "==", user.uid),
+        where("status", "==", "completed"),
+        orderBy("date", "desc")
+      );
+
+      const snapshot = await getDocs(workoutsQuery);
+      const allSets: Array<{ weight: number; reps: number; date?: string }> = [];
+
+      snapshot.forEach((doc) => {
+        const workoutData = doc.data() as WorkoutLog;
+        const exercise = workoutData.exercises?.find(e => e.exerciseId === exerciseId);
+        
+        if (exercise && exercise.sets && exercise.sets.length > 0) {
+          // Add all completed sets with valid data
+          exercise.sets.forEach((set) => {
+            if (set.completed && set.weight > 0 && set.reps >= 1) {
+              allSets.push({
+                weight: set.weight,
+                reps: set.reps,
+                date: workoutData.date,
+              });
+            }
+          });
+        }
+      });
+
+      // Calculate stats and generate rep calculations
+      const stats = calculateExerciseStats(allSets);
+      const calculations = stats.estimated1RM > 0 
+        ? generateRepCalculations(stats.estimated1RM)
+        : [];
+
+      setRepCalculatorData({
+        exerciseId,
+        exerciseName,
+        calculations,
+        stats,
+      });
+    } catch (error) {
+      console.error("Error calculating rep data:", error);
+      toast.error("Failed to load rep calculator data");
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
   const checkForPB = async (
     exerciseId: string,
     currentSet: WorkoutSet,
@@ -506,66 +600,138 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
     setSaving(true);
     
     try {
-      // Check all completed sets for PBs before ending workout
+      // Collect all PBs from completed sets
       const updatedExercises = [...workout.exercises];
-      let hasNewPB = false;
-      let lastPbData: { type: "reps" | "weight"; exerciseName: string; weight: number; reps: number } | null = null;
+      const pbsFound: Array<{
+        exerciseName: string;
+        type: "reps" | "weight";
+        weight: number;
+        reps: number;
+      }> = [];
+      const pbSetKeys = new Set<string>(); // Track unique PBs to avoid duplicates
 
+      // First pass: Collect all sets already marked as PB during workout
       for (let exerciseIndex = 0; exerciseIndex < updatedExercises.length; exerciseIndex++) {
         const exercise = updatedExercises[exerciseIndex];
         for (let setIndex = 0; setIndex < exercise.sets.length; setIndex++) {
           const set = exercise.sets[setIndex];
-          // Only check completed sets that aren't already marked as PB and have valid data
-          if (set.completed && !set.isPB && set.weight > 0 && set.reps >= 1) {
-            // Get all sets from current exercise (excluding the set being checked)
-            const otherSetsInCurrentExercise = exercise.sets.filter(
-              (_, idx) => idx !== setIndex
-            );
-            const pbResult = await checkForPB(
-              exercise.exerciseId, 
-              set, 
-              workout.date,
-              otherSetsInCurrentExercise
-            );
-            if (pbResult.isPB && pbResult.type) {
-              updatedExercises[exerciseIndex].sets[setIndex] = {
-                ...set,
-                isPB: true
-              };
-              hasNewPB = true;
-              lastPbData = {
-                type: pbResult.type,
-                exerciseName: exercise.name,
-                weight: set.weight,
-                reps: set.reps
-              };
+          
+          if (set.completed && set.isPB && set.weight > 0 && set.reps >= 1) {
+            const pbKey = `${exercise.exerciseId}-${set.weight}-${set.reps}`;
+            if (!pbSetKeys.has(pbKey)) {
+              // Determine PB type by checking against history
+              const otherSetsInCurrentExercise = exercise.sets.filter(
+                (_, idx) => idx !== setIndex
+              );
+              const pbResult = await checkForPB(
+                exercise.exerciseId, 
+                set, 
+                workout.date,
+                otherSetsInCurrentExercise
+              );
+              if (pbResult.isPB && pbResult.type) {
+                pbsFound.push({
+                  exerciseName: exercise.name,
+                  type: pbResult.type,
+                  weight: set.weight,
+                  reps: set.reps
+                });
+                pbSetKeys.add(pbKey);
+                console.log(`Found existing PB: ${exercise.name} - ${pbResult.type} PB at ${set.weight}kg × ${set.reps} reps`);
+              }
             }
           }
         }
       }
 
-      // If we found new PBs, update the workout first
-      if (hasNewPB && lastPbData) {
+      // Second pass: Check for new PBs that weren't marked during workout
+      for (let exerciseIndex = 0; exerciseIndex < updatedExercises.length; exerciseIndex++) {
+        const exercise = updatedExercises[exerciseIndex];
+        for (let setIndex = 0; setIndex < exercise.sets.length; setIndex++) {
+          const set = exercise.sets[setIndex];
+          
+          if (set.completed && !set.isPB && set.weight > 0 && set.reps >= 1) {
+            const pbKey = `${exercise.exerciseId}-${set.weight}-${set.reps}`;
+            if (!pbSetKeys.has(pbKey)) {
+              const otherSetsInCurrentExercise = exercise.sets.filter(
+                (_, idx) => idx !== setIndex
+              );
+              const pbResult = await checkForPB(
+                exercise.exerciseId, 
+                set, 
+                workout.date,
+                otherSetsInCurrentExercise
+              );
+              if (pbResult.isPB && pbResult.type) {
+                updatedExercises[exerciseIndex].sets[setIndex] = {
+                  ...set,
+                  isPB: true
+                };
+                pbsFound.push({
+                  exerciseName: exercise.name,
+                  type: pbResult.type,
+                  weight: set.weight,
+                  reps: set.reps
+                });
+                pbSetKeys.add(pbKey);
+                console.log(`Found new PB: ${exercise.name} - ${pbResult.type} PB at ${set.weight}kg × ${set.reps} reps`);
+              }
+            }
+          }
+        }
+      }
+
+      console.log(`Total PBs found: ${pbsFound.length}`, pbsFound);
+
+      // Update exercises with newly marked PBs
+      const hasNewPBs = pbsFound.length > 0;
+      if (hasNewPBs) {
         const workoutDocRef = doc(db, "workout_logs", workoutId);
         await updateDoc(workoutDocRef, {
           exercises: updatedExercises
         });
-        // Show dialog for the last PB found
-        setPbDialogData(lastPbData);
-        setPbDialogOpen(true);
       }
 
-      const workoutDocRef = doc(db, "workout_logs", workoutId);
-      // Ensure latest data is saved
-      await updateDoc(workoutDocRef, {
-        exercises: hasNewPB ? updatedExercises : workout.exercises,
-        status: "completed",
-        endedAt: new Date()
+      // Store workout data and PBs, then show completion dialog
+      setPendingWorkoutData({
+        updatedExercises: hasNewPBs ? updatedExercises : workout.exercises,
+        hasNewPB: hasNewPBs
       });
-      toast.success("Workout saved and ended!");
+      setWorkoutPBs(pbsFound);
+      // Reset form to defaults
+      setWorkoutDifficultyRating(5);
+      setWorkoutFeedbackNotes("");
+      setWorkoutCompletionDialogOpen(true);
+    } catch (error) {
+      console.error("Error checking for PBs:", error);
+      toast.error("Failed to check for personal bests");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCompleteWorkout = async () => {
+    if (!workout || !pendingWorkoutData) return;
+    
+    setSaving(true);
+    try {
+      const workoutDocRef = doc(db, "workout_logs", workoutId);
+      
+      // Save workout with completion data
+      await updateDoc(workoutDocRef, {
+        exercises: pendingWorkoutData.updatedExercises,
+        status: "completed",
+        endedAt: new Date(),
+        difficultyRating: workoutDifficultyRating,
+        feedbackNotes: workoutFeedbackNotes || null,
+        pbsAchieved: workoutPBs.length > 0 ? workoutPBs : null,
+      });
+
+      toast.success("Workout saved and completed!");
+      setWorkoutCompletionDialogOpen(false);
       router.push("/workout-log");
     } catch (error) {
-      console.error("Error ending workout:", error);
+      console.error("Error completing workout:", error);
       toast.error("Failed to save workout");
     } finally {
       setSaving(false);
@@ -612,25 +778,32 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
           <Card key={exercise.exerciseId}>
             <CardHeader className="py-4 bg-muted/20 flex flex-row items-center justify-between">
               <CardTitle className="text-lg">{exercise.name}</CardTitle>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleViewHistory(exercise.exerciseId, exercise.name)}
-                >
-                  <History className="h-4 w-4 mr-2" />
-                  History
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDeleteExercise(exerciseIndex)}
-                  className="text-destructive hover:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Remove
-                </Button>
-              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <MoreVertical className="h-4 w-4" />
+                    <span className="sr-only">Open menu</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleOpenRepCalculator(exercise.exerciseId, exercise.name)}>
+                    <Calculator className="h-4 w-4 mr-2" />
+                    Rep Calculator
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleViewHistory(exercise.exerciseId, exercise.name)}>
+                    <History className="h-4 w-4 mr-2" />
+                    History
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onClick={() => handleDeleteExercise(exerciseIndex)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Remove Exercise
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </CardHeader>
             <CardContent className="p-0">
                <div className="overflow-x-auto">
@@ -860,6 +1033,278 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
           </DialogHeader>
           <div className="flex justify-center pb-4">
             <Button onClick={() => setPbDialogOpen(false)}>Awesome!</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rep Calculator Dialog */}
+      <Dialog open={repCalculatorOpen} onOpenChange={setRepCalculatorOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh]">
+          <DialogHeader>
+            <DialogTitle>
+              {repCalculatorData?.exerciseName || "Exercise"} - Rep Calculator
+            </DialogTitle>
+          </DialogHeader>
+          {loadingHistory ? (
+            <div className="text-center py-8">Loading calculator data...</div>
+          ) : repCalculatorData && repCalculatorData.stats.estimated1RM > 0 ? (
+            <div className="space-y-6">
+              {/* Stats Summary */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Your Stats</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Estimated 1RM</p>
+                      <p className="text-2xl font-bold">{repCalculatorData.stats.estimated1RM} kg</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Max Weight</p>
+                      <p className="text-2xl font-bold">{repCalculatorData.stats.maxWeight} kg</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Max Reps</p>
+                      <p className="text-2xl font-bold">{repCalculatorData.stats.maxReps}</p>
+                    </div>
+                    {repCalculatorData.stats.bestSet && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Best Set</p>
+                        <p className="text-lg font-semibold">
+                          {repCalculatorData.stats.bestSet.weight}kg × {repCalculatorData.stats.bestSet.reps}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Rep Calculations Table */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Weight for Rep Ranges</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Based on your estimated 1RM of {repCalculatorData.stats.estimated1RM}kg
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="h-[400px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-center">Reps</TableHead>
+                          <TableHead className="text-center">Weight (kg)</TableHead>
+                          <TableHead className="text-center">% of 1RM</TableHead>
+                          <TableHead className="text-center">Est. RPE</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {repCalculatorData.calculations.map((calc) => {
+                          const percentageOf1RM = ((calc.weight / calc.estimated1RM) * 100).toFixed(1);
+                          return (
+                            <TableRow key={calc.reps}>
+                              <TableCell className="text-center font-medium">
+                                {calc.reps}
+                              </TableCell>
+                              <TableCell className="text-center font-semibold text-lg">
+                                {calc.weight}
+                              </TableCell>
+                              <TableCell className="text-center text-muted-foreground">
+                                {percentageOf1RM}%
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge 
+                                  variant={
+                                    calc.rpeEstimate && calc.rpeEstimate >= 9 
+                                      ? "destructive" 
+                                      : calc.rpeEstimate && calc.rpeEstimate >= 8 
+                                      ? "default" 
+                                      : "secondary"
+                                  }
+                                >
+                                  {calc.rpeEstimate?.toFixed(1) || "-"}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+
+              <div className="p-4 bg-muted rounded-md">
+                <p className="text-xs text-muted-foreground">
+                  <strong>Note:</strong> Calculations are estimates based on the Epley formula and your exercise history. 
+                  Actual performance may vary based on factors like fatigue, form, and training conditions. 
+                  Use these as guidelines and adjust based on how you feel.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <p className="mb-2">No exercise history found.</p>
+              <p className="text-sm">
+                Complete some sets to see rep calculations based on your performance.
+              </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Workout Completion Dialog */}
+      <Dialog 
+        open={workoutCompletionDialogOpen} 
+        onOpenChange={(open) => {
+          if (!open && !saving) {
+            // Reset form if closing without saving
+            setWorkoutDifficultyRating(5);
+            setWorkoutFeedbackNotes("");
+            setWorkoutPBs([]);
+            setPendingWorkoutData(null);
+          }
+          setWorkoutCompletionDialogOpen(open);
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl">How was this workout?</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-6 py-4">
+            {/* Difficulty Rating with Emojis */}
+            <div className="space-y-4">
+              <Label className="text-base font-semibold">How difficult was this workout?</Label>
+              <div className="space-y-3">
+                {/* Emoji Scale */}
+                <div className="flex items-center justify-between px-2">
+                  {[
+                    { value: 1, emoji: "😴", label: "Very Easy" },
+                    { value: 2, emoji: "😌", label: "Easy" },
+                    { value: 3, emoji: "🙂", label: "Light" },
+                    { value: 4, emoji: "😐", label: "Moderate" },
+                    { value: 5, emoji: "😊", label: "Medium" },
+                    { value: 6, emoji: "😅", label: "Challenging" },
+                    { value: 7, emoji: "😰", label: "Hard" },
+                    { value: 8, emoji: "😤", label: "Very Hard" },
+                    { value: 9, emoji: "🔥", label: "Extreme" },
+                    { value: 10, emoji: "💀", label: "Max Effort" },
+                  ].map(({ value, emoji, label }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setWorkoutDifficultyRating(value)}
+                      className={`flex flex-col items-center gap-1 transition-all ${
+                        workoutDifficultyRating === value 
+                          ? 'scale-125' 
+                          : 'hover:scale-110 opacity-70 hover:opacity-100'
+                      }`}
+                      title={label}
+                    >
+                      <span className="text-4xl">{emoji}</span>
+                      {workoutDifficultyRating === value && (
+                        <span className="text-xs font-medium">{value}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                
+                {/* Slider */}
+                <div className="px-2">
+                  <input
+                    type="range"
+                    min="1"
+                    max="10"
+                    value={workoutDifficultyRating}
+                    onChange={(e) => setWorkoutDifficultyRating(Number(e.target.value))}
+                    className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                    <span>Very Easy</span>
+                    <span>Very Hard</span>
+                  </div>
+                </div>
+                
+                {/* Current Rating Display */}
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground">
+                    Rating: <span className="font-semibold text-foreground">{workoutDifficultyRating}/10</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* PB Summary */}
+            {workoutPBs.length > 0 && (
+              <div className="space-y-3">
+                <Label className="text-base font-semibold">Personal Bests Achieved 🏆</Label>
+                <Card className="bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800">
+                  <CardContent className="pt-4">
+                    <div className="space-y-2">
+                      {workoutPBs.map((pb, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                          <Trophy className="h-5 w-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0" />
+                          <div className="flex-1">
+                            <p className="font-semibold text-sm">{pb.exerciseName}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {pb.type === "reps" 
+                                ? `${pb.reps} reps at ${pb.weight}kg (Rep PB)`
+                                : `${pb.weight}kg × ${pb.reps} reps (Weight PB)`
+                              }
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* Feedback Notes */}
+            <div className="space-y-2">
+              <Label htmlFor="workout-feedback" className="text-base font-semibold">
+                Workout Notes (Optional)
+              </Label>
+              <Textarea
+                id="workout-feedback"
+                placeholder="How did you feel? What went well? What would you change?"
+                value={workoutFeedbackNotes}
+                onChange={(e) => setWorkoutFeedbackNotes(e.target.value)}
+                className="min-h-[100px] resize-none"
+                maxLength={500}
+              />
+              <p className="text-xs text-muted-foreground text-right">
+                {workoutFeedbackNotes.length}/500
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setWorkoutCompletionDialogOpen(false);
+                  setWorkoutDifficultyRating(5);
+                  setWorkoutFeedbackNotes("");
+                  setWorkoutPBs([]);
+                  setPendingWorkoutData(null);
+                }}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={handleCompleteWorkout}
+                disabled={saving}
+              >
+                {saving ? "Saving..." : "Complete Workout"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

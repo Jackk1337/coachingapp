@@ -286,6 +286,19 @@ export default function WorkoutRoutinesPage() {
     );
   });
 
+  // Group filtered exercises by category
+  const exercisesByCategory = filteredExercises.reduce((acc, exercise) => {
+    const category = exercise.category || "Uncategorized";
+    if (!acc[category]) {
+      acc[category] = [];
+    }
+    acc[category].push(exercise);
+    return acc;
+  }, {} as Record<string, Exercise[]>);
+
+  // Sort categories alphabetically
+  const sortedCategories = Object.keys(exercisesByCategory).sort();
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -353,25 +366,41 @@ export default function WorkoutRoutinesPage() {
                     </div>
                   </div>
                   <ScrollArea className="flex-1 p-2">
-                    {filteredExercises.map((exercise) => {
-                        const isSelected = selectedExercises.some(e => e.id === exercise.id);
-                        return (
-                            <div key={exercise.id} className="flex items-center space-x-2 mb-2">
-                                <Checkbox
-                                id={exercise.id}
-                                checked={isSelected}
-                                onCheckedChange={() => toggleExerciseSelection(exercise)}
-                                />
-                                <Label htmlFor={exercise.id} className="cursor-pointer text-sm flex-1">
-                                {exercise.name}
-                                </Label>
-                            </div>
-                        )
-                    })}
-                    {filteredExercises.length === 0 && exercises.length > 0 && (
-                      <p className="text-xs text-muted-foreground">No exercises match your search.</p>
+                    {sortedCategories.length > 0 ? (
+                      sortedCategories.map((category) => (
+                        <div key={category} className="mb-4">
+                          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 sticky top-0 bg-background py-1 z-10">
+                            {category}
+                          </h3>
+                          <div className="space-y-1">
+                            {exercisesByCategory[category].map((exercise) => {
+                              const isSelected = selectedExercises.some(e => e.id === exercise.id);
+                              return (
+                                <div key={exercise.id} className="flex items-center space-x-2 mb-1">
+                                  <Checkbox
+                                    id={exercise.id}
+                                    checked={isSelected}
+                                    onCheckedChange={() => toggleExerciseSelection(exercise)}
+                                  />
+                                  <Label htmlFor={exercise.id} className="cursor-pointer text-sm flex-1">
+                                    {exercise.name}
+                                  </Label>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <>
+                        {filteredExercises.length === 0 && exercises.length > 0 && (
+                          <p className="text-xs text-muted-foreground">No exercises match your search.</p>
+                        )}
+                        {exercises.length === 0 && (
+                          <p className="text-xs text-muted-foreground">No exercises found. Create one!</p>
+                        )}
+                      </>
                     )}
-                    {exercises.length === 0 && <p className="text-xs text-muted-foreground">No exercises found. Create one!</p>}
                   </ScrollArea>
                 </div>
 

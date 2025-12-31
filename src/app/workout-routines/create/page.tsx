@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, query, where, onSnapshot, orderBy, doc, setDoc, updateDoc } from "firebase/firestore";
+import { collection, addDoc, query, where, onSnapshot, orderBy, doc, setDoc, updateDoc, getDoc, getDocs } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,6 +62,14 @@ interface Routine {
   exerciseNotes?: Record<string, string>;
   sharedToCommunity?: boolean;
   communityWorkoutId?: string;
+  programId?: string;
+}
+
+interface Program {
+  id: string;
+  name: string;
+  userId: string;
+  routineIds?: string[];
 }
 
 // Sortable Item Component
@@ -120,14 +128,18 @@ function SortableExerciseItem({
 export default function CreateWorkoutRoutinePage() {
   const { user } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const programIdParam = searchParams?.get("programId");
+  
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [programs, setPrograms] = useState<Program[]>([]);
+  const [selectedProgramId, setSelectedProgramId] = useState<string>("");
   const [routineName, setRoutineName] = useState("");
   const [description, setDescription] = useState("");
   const [difficultyRating, setDifficultyRating] = useState<string>("");
   const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
   const [selectedExercises, setSelectedExercises] = useState<Exercise[]>([]);
   const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
-  const [sharedToCommunity, setSharedToCommunity] = useState(false);
   const [loading, setLoading] = useState(false);
   
   // Add Exercise Dialog State
@@ -176,10 +188,84 @@ export default function CreateWorkoutRoutinePage() {
       }
     );
 
+    // Fetch Programs
+    const programsQuery = query(
+      collection(db, "workout_programs"),
+      where("userId", "==", user.uid),
+      orderBy("name")
+    );
+
+    const unsubscribePrograms = onSnapshot(
+      programsQuery,
+      async (snapshot) => {
+        const programList: Program[] = [];
+        snapshot.forEach((doc) => {
+          programList.push({ id: doc.id, ...doc.data() } as Program);
+        });
+        setPrograms(programList);
+
+        // If no programs, ensure "My Program" exists
+        if (programList.length === 0) {
+          await ensureMyProgram(user.uid);
+        } else {
+          // Set selected program: use param if provided, otherwise default to "My Program"
+          if (programIdParam) {
+            setSelectedProgramId(programIdParam);
+          } else {
+            const myProgram = programList.find(p => p.name === "My Program");
+            if (myProgram) {
+              setSelectedProgramId(myProgram.id);
+            } else if (programList.length > 0) {
+              setSelectedProgramId(programList[0].id);
+            }
+          }
+        }
+      },
+      async (error) => {
+        console.error("Error fetching programs:", error);
+        // Still try to ensure "My Program" exists
+        if (user) {
+          await ensureMyProgram(user.uid);
+        }
+      }
+    );
+
     return () => {
       unsubscribeExercises();
+      unsubscribePrograms();
     };
-  }, [user]);
+  }, [user, programIdParam]);
+
+  const ensureMyProgram = async (userId: string) => {
+    try {
+      // Check if "My Program" exists
+      const myProgramQuery = query(
+        collection(db, "workout_programs"),
+        where("userId", "==", userId),
+        where("name", "==", "My Program"),
+        orderBy("createdAt", "desc")
+      );
+      const snapshot = await getDocs(myProgramQuery);
+      
+      if (snapshot.empty) {
+        // Create "My Program"
+        const myProgramRef = await addDoc(collection(db, "workout_programs"), {
+          name: "My Program",
+          description: "Default program for your workout routines",
+          userId: userId,
+          routineIds: [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        setSelectedProgramId(myProgramRef.id);
+      } else {
+        setSelectedProgramId(snapshot.docs[0].id);
+      }
+    } catch (error) {
+      console.error("Error ensuring My Program:", error);
+      toast.error("Failed to initialize default program");
+    }
+  };
 
   const resetAddExerciseForm = () => {
     setNewExerciseName("");
@@ -265,7 +351,12 @@ export default function CreateWorkoutRoutinePage() {
   };
 
   const handleSaveRoutine = async () => {
-    if (!routineName || selectedExercises.length === 0 || !user) return;
+    if (!routineName || selectedExercises.length === 0 || !user || !selectedProgramId) {
+      if (!selectedProgramId) {
+        toast.error("Please select a program");
+      }
+      return;
+    }
 
     setLoading(true);
     try {
@@ -287,32 +378,23 @@ export default function CreateWorkoutRoutinePage() {
         difficultyRating: difficultyRating || null,
         exerciseNotes: Object.keys(filteredExerciseNotes).length > 0 ? filteredExerciseNotes : null,
         userId: user.uid,
+        programId: selectedProgramId,
         createdAt: new Date(),
-        sharedToCommunity: sharedToCommunity,
       });
 
-      // If sharing to community, create community workout entry
-      if (sharedToCommunity) {
-        const communityWorkoutRef = doc(collection(db, "community_workouts"));
-        await setDoc(communityWorkoutRef, {
-          name: routineName,
-          exerciseIds: exerciseIds,
-          description: description || null,
-          difficultyRating: difficultyRating || null,
-          exerciseNotes: Object.keys(filteredExerciseNotes).length > 0 ? filteredExerciseNotes : null,
-          createdBy: user.uid,
-          createdAt: new Date(),
-          sourceRoutineId: routineRef.id,
-        });
-
-        // Update routine with community workout ID
-        await updateDoc(doc(db, "workout_routines", routineRef.id), {
-          communityWorkoutId: communityWorkoutRef.id,
+      // Update program's routineIds array
+      const programRef = doc(db, "workout_programs", selectedProgramId);
+      const programDoc = await getDoc(programRef);
+      if (programDoc.exists()) {
+        const currentRoutineIds = programDoc.data().routineIds || [];
+        await updateDoc(programRef, {
+          routineIds: [...currentRoutineIds, routineRef.id],
+          updatedAt: new Date(),
         });
       }
 
       toast.success("Routine created successfully!");
-      router.push("/workout-routines");
+      router.push(`/workout-programs/${selectedProgramId}`);
     } catch (error) {
       console.error("Error saving routine: ", error);
       toast.error("Failed to save routine.");
@@ -349,7 +431,7 @@ export default function CreateWorkoutRoutinePage() {
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background border-b">
         <div className="flex items-center justify-between px-4 py-3">
-          <Link href="/workout-routines">
+          <Link href={selectedProgramId ? `/workout-programs/${selectedProgramId}` : "/workout-programs"}>
             <Button variant="ghost" size="icon">
               <ChevronLeft className="h-5 w-5" />
             </Button>
@@ -367,6 +449,22 @@ export default function CreateWorkoutRoutinePage() {
               <CardTitle>Routine Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="grid gap-2">
+                <Label htmlFor="program">Program</Label>
+                <Select value={selectedProgramId} onValueChange={setSelectedProgramId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select program" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {programs.map((program) => (
+                      <SelectItem key={program.id} value={program.id}>
+                        {program.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="grid gap-2">
                 <Label htmlFor="name">Routine Name</Label>
                 <Input
@@ -399,18 +497,6 @@ export default function CreateWorkoutRoutinePage() {
                     <SelectItem value="Intermediate">Intermediate</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-
-              {/* Share with Community Checkbox */}
-              <div className="flex items-center space-x-2 pt-2">
-                <Checkbox
-                  id="share-community"
-                  checked={sharedToCommunity}
-                  onCheckedChange={(checked) => setSharedToCommunity(checked === true)}
-                />
-                <Label htmlFor="share-community" className="cursor-pointer">
-                  Share with the community
-                </Label>
               </div>
             </CardContent>
           </Card>
@@ -526,14 +612,14 @@ export default function CreateWorkoutRoutinePage() {
           <div className="flex gap-4">
             <Button 
               variant="outline" 
-              onClick={() => router.push("/workout-routines")}
+              onClick={() => router.push(selectedProgramId ? `/workout-programs/${selectedProgramId}` : "/workout-programs")}
               className="flex-1"
             >
               Cancel
             </Button>
             <Button 
               onClick={handleSaveRoutine} 
-              disabled={!routineName || selectedExercises.length === 0 || loading}
+              disabled={!routineName || selectedExercises.length === 0 || !selectedProgramId || loading}
               className="flex-1"
             >
               {loading ? "Saving..." : "Save Routine"}

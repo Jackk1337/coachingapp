@@ -1,13 +1,6 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ============================================
-    // TESTING RULES - PERMISSIVE FOR DEVELOPMENT
-    // ============================================
-    // WARNING: These rules are for testing only!
-    // DO NOT use in production - they allow too much access
-    // ============================================
-    
     // Helper function to check if user is authenticated
     function isAuthenticated() {
       return request.auth != null;
@@ -18,11 +11,7 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
     
-    // ============================================
-    // USER & PROFILE COLLECTIONS
-    // ============================================
-    
-    // Users collection - users can read/write their own profile
+    // Users collection - users can only read/write their own profile
     match /users/{userId} {
       allow read, write: if isOwner(userId);
     }
@@ -33,11 +22,7 @@ service cloud.firestore {
       allow write: if isOwner(profileId);
     }
     
-    // ============================================
-    // MESSAGING
-    // ============================================
-    
-    // Messages collection - users can read/write their own messages
+    // Messages collection - users can only read/write their own messages
     match /messages/{messageId} {
       allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
@@ -45,21 +30,15 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
     
-    // ============================================
-    // COACHES
-    // ============================================
-    
-    // Coaches collection - authenticated users can read, allow writes for testing
+    // Coaches collection - authenticated users can read, only admins can write
+    // TODO: Implement admin check if needed (currently disabled for security)
     match /coaches/{coachId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated(); // Permissive for testing
+      allow write: if false; // Disable writes until admin check is implemented
     }
     
-    // ============================================
-    // CHECKINS
-    // ============================================
-    
-    // Weekly checkins - users can access their own checkins
+    // Weekly checkins - users can only access their own checkins
+    // Document ID format: {userId}_{date} OR check userId field in document
     match /weekly_checkins/{checkinId} {
       allow read: if isAuthenticated() && (
         checkinId.matches(request.auth.uid + '_.*') ||
@@ -71,7 +50,8 @@ service cloud.firestore {
       );
     }
     
-    // Daily checkins - users can access their own checkins
+    // Daily checkins - users can only access their own checkins
+    // Document ID format: {userId}_{date} OR check userId field in document
     match /daily_checkins/{checkinId} {
       allow read: if isAuthenticated() && (
         checkinId.matches(request.auth.uid + '_.*') ||
@@ -83,11 +63,8 @@ service cloud.firestore {
       );
     }
     
-    // ============================================
-    // FOOD & NUTRITION
-    // ============================================
-    
-    // Food diary - users can access their own entries
+    // Food diary - users can only access their own entries
+    // Document ID format: {userId}_{date} OR check userId field in document
     match /food_diary/{diaryId} {
       allow read: if isAuthenticated() && (
         diaryId.matches(request.auth.uid + '_.*') ||
@@ -99,25 +76,8 @@ service cloud.firestore {
       );
     }
     
-    // Food library - users can access their own food items
-    match /food_library/{foodId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
-    }
-    
-    // Saved meals collection - users can access their own saved meals
-    match /saved_meals/{mealId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
-    }
-    
-    // ============================================
-    // WATER LOG
-    // ============================================
-    
-    // Water log - users can access their own entries
+    // Water log - users can only access their own entries
+    // Document ID format: {userId}_{date} OR check userId field in document
     match /water_log/{logId} {
       allow read: if isAuthenticated() && (
         logId.matches(request.auth.uid + '_.*') ||
@@ -129,48 +89,61 @@ service cloud.firestore {
       );
     }
     
-    // ============================================
-    // WORKOUTS
-    // ============================================
-    
-    // Workout logs - users can access their own logs
+    // Workout logs - users can only access their own logs
     match /workout_logs/{workoutId} {
       allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
     
-    // Cardio log - users can access their own logs
+    // Cardio log - users can only access their own logs
     match /cardio_log/{cardioId} {
       allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
     
-    // Workout routines - users can access their own routines
+    // Workout routines - users can only access their own routines
     match /workout_routines/{routineId} {
       allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
     
-    // Exercise library - users can access their own exercises
+    // Exercise library - users can only access their own exercises
     match /exercise_library/{exerciseId} {
       allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
     
-    // Personal records - users can read all, write their own
-    match /personal_records/{recordId} {
-      allow read: if isAuthenticated();
+    // Food library - users can only access their own food items
+    match /food_library/{foodId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
     
-    // ============================================
-    // COMMUNITY FEATURES
-    // ============================================
+    // Supplements collection (if exists) - users can only access their own supplements
+    match /supplements/{supplementId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+    
+    // Saved meals collection - users can only access their own saved meals
+    match /saved_meals/{mealId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+    
+    // User cards collection - users can only access their own cards
+    match /user_cards/{cardId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
     
     // Community workouts - all authenticated users can read, only creator can write
     match /community_workouts/{workoutId} {
@@ -188,27 +161,12 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
     }
     
-    // ============================================
-    // OTHER COLLECTIONS
-    // ============================================
-    
-    // Supplements collection - users can access their own supplements
-    match /supplements/{supplementId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    // Personal records - users can read all, write their own
+    match /personal_records/{recordId} {
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
-    
-    // User cards collection - users can access their own cards
-    match /user_cards/{cardId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
-    }
-    
-    // ============================================
-    // DEFAULT DENY
-    // ============================================
     
     // Deny all other access by default
     match /{document=**} {
@@ -216,4 +174,3 @@ service cloud.firestore {
     }
   }
 }
-

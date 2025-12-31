@@ -1,5 +1,5 @@
 # Security Review Report
-**Application:** Coaching App  
+**Application:** RallyFit  
 **Review Date:** 2024  
 **Reviewer:** Security Consultant  
 **Severity Levels:** 🔴 Critical | 🟠 High | 🟡 Medium | 🟢 Low
@@ -662,5 +662,8 @@ The application has a solid foundation with Firebase Authentication, but critica
 ---
 
 *This report should be reviewed and updated regularly as the application evolves.*
+
+
+
 
 

@@ -1,4 +1,4 @@
-# Coaching App
+# RallyFit
 
 A comprehensive SaaS coaching application built with Next.js, Firebase, and ShadCN UI for tracking workouts, food, cardio, and daily logs.
 

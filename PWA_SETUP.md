@@ -65,3 +65,6 @@ The `public/manifest.json` file controls PWA settings. You can customize:
 - Users can dismiss the prompt, and it won't show again for 7 days
 - The component only shows on mobile devices (iOS/Android)
 
+
+
+

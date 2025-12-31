@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Mail, User } from "lucide-react";
+import { Mail, User, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
@@ -114,8 +114,16 @@ export default function NavBar() {
           </Link>
         </div>
 
-        {/* User Profile Dropdown */}
-        <DropdownMenu>
+        <div className="flex items-center gap-2">
+          {/* Community Button */}
+          <Link href="/community">
+            <Button variant="ghost" size="icon">
+              <Users className="h-5 w-5" />
+            </Button>
+          </Link>
+
+          {/* User Profile Dropdown */}
+          <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="rounded-full">
               <Avatar className="h-8 w-8">
@@ -134,6 +142,7 @@ export default function NavBar() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
       </div>
     </nav>
   );

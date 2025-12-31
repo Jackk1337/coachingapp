@@ -1,0 +1,265 @@
+{
+  "exercises": [
+    {
+      "name": "Bench Press",
+      "category": "Chest",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Incline Bench Press",
+      "category": "Chest",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Decline Bench Press",
+      "category": "Chest",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Dumbbell Flyes",
+      "category": "Chest",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Push-ups",
+      "category": "Chest",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Dips",
+      "category": "Chest",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Pull-ups",
+      "category": "Back",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Chin-ups",
+      "category": "Back",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Bent Over Row",
+      "category": "Back",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "T-Bar Row",
+      "category": "Back",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Cable Row",
+      "category": "Back",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "One-Arm Dumbbell Row",
+      "category": "Back",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Wide-Grip Pull-down",
+      "category": "Back",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Close-Grip Pull-down",
+      "category": "Back",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Barbell Curl",
+      "category": "Biceps",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Dumbbell Curl",
+      "category": "Biceps",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Hammer Curl",
+      "category": "Biceps",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Concentration Curl",
+      "category": "Biceps",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Cable Curl",
+      "category": "Biceps",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Close-Grip Bench Press",
+      "category": "Triceps",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Overhead Tricep Extension",
+      "category": "Triceps",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Tricep Pushdown",
+      "category": "Triceps",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Diamond Push-ups",
+      "category": "Triceps",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Overhead Press",
+      "category": "Shoulders",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Dumbbell Shoulder Press",
+      "category": "Shoulders",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Lateral Raise",
+      "category": "Shoulders",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Front Raise",
+      "category": "Shoulders",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Rear Delt Fly",
+      "category": "Shoulders",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Upright Row",
+      "category": "Shoulders",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Shrugs",
+      "category": "Shoulders",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Squat",
+      "category": "Legs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Front Squat",
+      "category": "Legs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Leg Press",
+      "category": "Legs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Romanian Deadlift",
+      "category": "Legs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Leg Curl",
+      "category": "Legs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Leg Extension",
+      "category": "Legs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Lunges",
+      "category": "Legs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Walking Lunges",
+      "category": "Legs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Bulgarian Split Squat",
+      "category": "Legs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Calf Raise",
+      "category": "Legs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Seated Calf Raise",
+      "category": "Legs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Hip Thrust",
+      "category": "Legs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Glute Bridge",
+      "category": "Legs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Crunch",
+      "category": "Abs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Sit-ups",
+      "category": "Abs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Plank",
+      "category": "Abs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Russian Twist",
+      "category": "Abs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Leg Raises",
+      "category": "Abs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Hanging Leg Raises",
+      "category": "Abs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Mountain Climbers",
+      "category": "Abs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Bicycle Crunches",
+      "category": "Abs",
+      "userId": "rallyfit"
+    },
+    {
+      "name": "Cable Crunch",
+      "category": "Abs",
+      "userId": "rallyfit"
+    }
+  ]
+}
+

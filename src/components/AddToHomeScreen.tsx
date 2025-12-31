@@ -103,10 +103,10 @@ export default function AddToHomeScreen() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Download className="h-5 w-5" />
-              Install Coaching App
+              Install RallyFit
             </DialogTitle>
             <DialogDescription>
-              Add Coaching App to your home screen for quick access and a better experience.
+              Add RallyFit to your home screen for quick access and a better experience.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 mt-4">
@@ -134,7 +134,7 @@ export default function AddToHomeScreen() {
               Add to Home Screen
             </DialogTitle>
             <DialogDescription>
-              Install Coaching App on your iPhone or iPad for quick access and a better experience.
+              Install RallyFit on your iPhone or iPad for quick access and a better experience.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-4">
@@ -157,4 +157,7 @@ export default function AddToHomeScreen() {
 
   return null;
 }
+
+
+
 

@@ -375,3 +375,6 @@ curl -X POST http://localhost:3000/api/generate-coaching-message \
 **The most critical risk is the API route that has no authentication check whatsoever.** This should be fixed immediately as it's exploitable by anyone on the internet.
 
 
+
+
+

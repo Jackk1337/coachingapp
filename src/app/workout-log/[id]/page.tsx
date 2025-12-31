@@ -22,7 +22,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { ChevronLeft, Plus, Trash2, Save, History, Search, Trophy, Calculator, MoreVertical } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, Save, History, Search, Trophy, Calculator, MoreVertical, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { calculateExerciseStats, generateRepCalculations, type RepCalculation } from "@/lib/rep-calculator";
 import {
@@ -57,7 +57,7 @@ interface WorkoutLog {
   date: string;
   status: "in_progress" | "completed";
   exercises: WorkoutExercise[];
-  difficultyRating?: number; // 1-10
+  difficultyRating?: number; // 1-5
   feedbackNotes?: string;
   pbsAchieved?: Array<{
     exerciseName: string;
@@ -127,7 +127,7 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
     stats: ReturnType<typeof calculateExerciseStats>;
   } | null>(null);
   const [workoutCompletionDialogOpen, setWorkoutCompletionDialogOpen] = useState(false);
-  const [workoutDifficultyRating, setWorkoutDifficultyRating] = useState(5);
+  const [workoutDifficultyRating, setWorkoutDifficultyRating] = useState(3);
   const [workoutFeedbackNotes, setWorkoutFeedbackNotes] = useState("");
   const [workoutPBs, setWorkoutPBs] = useState<Array<{
     exerciseName: string;
@@ -139,6 +139,11 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
     updatedExercises: WorkoutExercise[];
     hasNewPB: boolean;
   } | null>(null);
+  const [routineDescription, setRoutineDescription] = useState<string>("");
+  const [routineDifficulty, setRoutineDifficulty] = useState<string>("");
+  const [routineExerciseNotes, setRoutineExerciseNotes] = useState<Record<string, string>>({});
+  const [exerciseNotesDialogOpen, setExerciseNotesDialogOpen] = useState(false);
+  const [viewingExerciseNotes, setViewingExerciseNotes] = useState<{ name: string; notes: string } | null>(null);
 
   // Ref to keep track of latest workout state for the debounce save
   const workoutRef = useRef<WorkoutLog | null>(null);
@@ -157,6 +162,29 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
   }, [workoutId]);
 
   const debouncedSave = useDebounce(saveToFirestore, 1000);
+
+  // Fetch routine metadata (description, difficulty, notes)
+  useEffect(() => {
+    if (!workout?.routineId) return;
+
+    const fetchRoutineMetadata = async () => {
+      try {
+        const routineRef = doc(db, "workout_routines", workout.routineId);
+        const routineSnap = await getDoc(routineRef);
+        
+        if (routineSnap.exists()) {
+          const routineData = routineSnap.data();
+          setRoutineDescription(routineData.description || "");
+          setRoutineDifficulty(routineData.difficultyRating || "");
+          setRoutineExerciseNotes(routineData.exerciseNotes || {});
+        }
+      } catch (error) {
+        console.error("Error fetching routine metadata:", error);
+      }
+    };
+
+    fetchRoutineMetadata();
+  }, [workout?.routineId]);
 
   // Real-time listener for workout updates
   useEffect(() => {
@@ -218,6 +246,11 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
         if (routineSnap.exists()) {
            const routineData = routineSnap.data();
            const exerciseIds: string[] = routineData.exerciseIds || [];
+           
+           // Store routine metadata
+           setRoutineDescription(routineData.description || "");
+           setRoutineDifficulty(routineData.difficultyRating || "");
+           setRoutineExerciseNotes(routineData.exerciseNotes || {});
            
            if (exerciseIds.length > 0) {
              const exercisesRef = collection(db, "exercise_library");
@@ -346,6 +379,12 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
       console.error("Error removing exercise:", error);
       toast.error("Failed to remove exercise");
     }
+  };
+
+  const handleViewNotes = (exerciseId: string, exerciseName: string) => {
+    const notes = routineExerciseNotes[exerciseId] || "";
+    setViewingExerciseNotes({ name: exerciseName, notes });
+    setExerciseNotesDialogOpen(true);
   };
 
   const handleViewHistory = async (exerciseId: string, exerciseName: string) => {
@@ -762,6 +801,26 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
         </Button>
       </div>
 
+      {/* Routine Description and Difficulty */}
+      {(routineDescription || routineDifficulty) && (
+        <Card className="mb-4">
+          <CardContent className="pt-4">
+            {routineDescription && (
+              <div className="mb-3">
+                <p className="text-sm text-muted-foreground mb-1">Description</p>
+                <p className="text-sm">{routineDescription}</p>
+              </div>
+            )}
+            {routineDifficulty && (
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Difficulty</p>
+                <Badge variant="secondary">{routineDifficulty}</Badge>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Add Exercise Button */}
       <div className="mb-4">
         <Button 
@@ -793,6 +852,10 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
                   <DropdownMenuItem onClick={() => handleViewHistory(exercise.exerciseId, exercise.name)}>
                     <History className="h-4 w-4 mr-2" />
                     History
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleViewNotes(exercise.exerciseId, exercise.name)}>
+                    <FileText className="h-4 w-4 mr-2" />
+                    Notes
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem 
@@ -1183,14 +1246,9 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
                   {[
                     { value: 1, emoji: "😴", label: "Very Easy" },
                     { value: 2, emoji: "😌", label: "Easy" },
-                    { value: 3, emoji: "🙂", label: "Light" },
-                    { value: 4, emoji: "😐", label: "Moderate" },
-                    { value: 5, emoji: "😊", label: "Medium" },
-                    { value: 6, emoji: "😅", label: "Challenging" },
-                    { value: 7, emoji: "😰", label: "Hard" },
-                    { value: 8, emoji: "😤", label: "Very Hard" },
-                    { value: 9, emoji: "🔥", label: "Extreme" },
-                    { value: 10, emoji: "💀", label: "Max Effort" },
+                    { value: 3, emoji: "😊", label: "Medium" },
+                    { value: 4, emoji: "😅", label: "Challenging" },
+                    { value: 5, emoji: "🔥", label: "Very Hard" },
                   ].map(({ value, emoji, label }) => (
                     <button
                       key={value}
@@ -1216,7 +1274,7 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
                   <input
                     type="range"
                     min="1"
-                    max="10"
+                    max="5"
                     value={workoutDifficultyRating}
                     onChange={(e) => setWorkoutDifficultyRating(Number(e.target.value))}
                     className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
@@ -1230,7 +1288,7 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
                 {/* Current Rating Display */}
                 <div className="text-center">
                   <p className="text-sm text-muted-foreground">
-                    Rating: <span className="font-semibold text-foreground">{workoutDifficultyRating}/10</span>
+                    Rating: <span className="font-semibold text-foreground">{workoutDifficultyRating}/5</span>
                   </p>
                 </div>
               </div>
@@ -1416,6 +1474,25 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
             >
               Add {selectedExercisesToAdd.length > 0 ? `(${selectedExercisesToAdd.length})` : ""}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Exercise Notes Dialog */}
+      <Dialog open={exerciseNotesDialogOpen} onOpenChange={setExerciseNotesDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Notes for {viewingExerciseNotes?.name || "Exercise"}</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            {viewingExerciseNotes?.notes ? (
+              <p className="text-sm whitespace-pre-wrap">{viewingExerciseNotes.notes}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">No notes available for this exercise.</p>
+            )}
+          </div>
+          <div className="flex justify-end">
+            <Button onClick={() => setExerciseNotesDialogOpen(false)}>Close</Button>
           </div>
         </DialogContent>
       </Dialog>

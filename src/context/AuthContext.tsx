@@ -19,6 +19,7 @@ interface UserProfile {
   photoURL: string | null;
   firstName?: string;
   lastName?: string;
+  handle?: string; // Twitter-like @username
   dateOfBirth?: string; // ISO date string
   gender?: "Male" | "Female";
   onboardingCompleted?: boolean;

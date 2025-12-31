@@ -134,6 +134,10 @@ export default function FoodDiaryPage() {
   const [scanError, setScanError] = useState<string>("");
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const scannerElementId = "barcode-scanner";
+  const [isCreateFoodScanning, setIsCreateFoodScanning] = useState(false);
+  const [createFoodScanError, setCreateFoodScanError] = useState<string>("");
+  const createFoodScannerRef = useRef<Html5Qrcode | null>(null);
+  const createFoodScannerElementId = "create-food-barcode-scanner";
   const [foodLibrary, setFoodLibrary] = useState<Food[]>([]);
   const [recentFoods, setRecentFoods] = useState<string[]>([]); // Array of food IDs
   const [savedMeals, setSavedMeals] = useState<Array<{ id: string; name: string; foods: Food[]; createdAt: any }>>([]);
@@ -1508,14 +1512,177 @@ export default function FoodDiaryPage() {
     setScanError("");
   };
 
+  // Start barcode scanner for Create Food dialog (sets state, actual init happens in useEffect)
+  const startCreateFoodScanner = () => {
+    if (isCreateFoodScanning) return;
+
+    // Check if browser supports camera
+    if (typeof window === "undefined" || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setCreateFoodScanError("Camera not supported in this browser");
+      return;
+    }
+
+    // Check if HTTPS (required for camera access)
+    if (location.protocol !== "https:" && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+      setCreateFoodScanError("Camera access requires HTTPS. Please use HTTPS or localhost.");
+      return;
+    }
+
+    setCreateFoodScanError("");
+    setIsCreateFoodScanning(true);
+  };
+
+  // Initialize Create Food scanner (called by useEffect)
+  const initializeCreateFoodScanner = async () => {
+    const element = document.getElementById(createFoodScannerElementId);
+    if (!element) {
+      setCreateFoodScanError("Scanner element not found");
+      setIsCreateFoodScanning(false);
+      return;
+    }
+
+    try {
+      const html5QrCode = new Html5Qrcode(createFoodScannerElementId);
+      createFoodScannerRef.current = html5QrCode;
+
+      // Get element dimensions for better scanning box
+      const elementWidth = element.clientWidth || 300;
+      const elementHeight = element.clientHeight || 300;
+      const qrboxSize = Math.min(250, Math.min(elementWidth - 20, elementHeight - 20));
+
+      await html5QrCode.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: { width: qrboxSize, height: qrboxSize },
+        },
+        async (decodedText) => {
+          // Barcode scanned successfully
+          await stopCreateFoodScanner();
+          
+          // Search food_library for this barcode
+          const foundFood = await searchFoodLibraryByBarcode(decodedText);
+          
+          if (foundFood) {
+            // Populate form with found food data
+            setCreateFoodData({
+              name: foundFood.name || "",
+              caloriesPer100g: foundFood.caloriesPer100g?.toString() || "",
+              servingSize: foundFood.servingSize?.toString() || "100",
+              proteinPer100g: foundFood.proteinPer100g?.toString() || "",
+              carbPer100g: foundFood.carbPer100g?.toString() || "",
+              fatPer100g: foundFood.fatPer100g?.toString() || "",
+              barcode: decodedText,
+            });
+            toast.success("Food found in your library! Form populated.");
+          } else {
+            // Not found, just set the barcode
+            setCreateFoodData((prev) => ({
+              ...prev,
+              barcode: decodedText,
+            }));
+            toast.info("Barcode scanned. Food not found in library - please fill in the details.");
+          }
+        },
+        (errorMessage) => {
+          // Ignore common scanning errors
+          if (!errorMessage.includes("NotFoundException") && !errorMessage.includes("No MultiFormat Readers")) {
+            console.debug("Create Food Scanner:", errorMessage);
+          }
+        }
+      );
+
+      // Explicitly style the video element after it's rendered
+      setTimeout(() => {
+        const videoElement = element.querySelector('video');
+        if (videoElement) {
+          videoElement.style.width = '100%';
+          videoElement.style.height = 'auto';
+          videoElement.style.objectFit = 'contain';
+          videoElement.style.display = 'block';
+        }
+      }, 500);
+    } catch (err) {
+      console.error("Error starting Create Food scanner:", err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to start camera";
+      setCreateFoodScanError(errorMessage);
+      setIsCreateFoodScanning(false);
+    }
+  };
+
+  // Stop barcode scanner for Create Food dialog
+  const stopCreateFoodScanner = async () => {
+    if (createFoodScannerRef.current) {
+      try {
+        await createFoodScannerRef.current.stop();
+        createFoodScannerRef.current.clear();
+      } catch (error) {
+        console.error("Error stopping Create Food scanner:", error);
+      }
+      createFoodScannerRef.current = null;
+    }
+    setIsCreateFoodScanning(false);
+    setCreateFoodScanError("");
+  };
+
   // Cleanup scanner on unmount or dialog close
   useEffect(() => {
     return () => {
       if (scannerRef.current) {
         stopScanner();
       }
+      if (createFoodScannerRef.current) {
+        stopCreateFoodScanner();
+      }
     };
   }, []);
+
+  // Initialize Create Food scanner when isCreateFoodScanning becomes true
+  useEffect(() => {
+    if (!isCreateFoodScanning) return;
+
+    const element = document.getElementById(createFoodScannerElementId);
+    if (!element) {
+      // Element not yet rendered, wait a bit and retry
+      const timer = setTimeout(() => {
+        const retryElement = document.getElementById(createFoodScannerElementId);
+        if (retryElement && isCreateFoodScanning) {
+          initializeCreateFoodScanner();
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+
+    initializeCreateFoodScanner();
+  }, [isCreateFoodScanning]);
+
+  // Search food_library by barcode for Create Food dialog
+  const searchFoodLibraryByBarcode = async (barcode: string) => {
+    if (!barcode || !user) {
+      return null;
+    }
+
+    try {
+      const foodLibraryRef = collection(db, "food_library");
+      const q = query(
+        foodLibraryRef,
+        where("barcode", "==", barcode),
+        where("userId", "==", user.uid)
+      );
+
+      const querySnapshot = await getDocs(q);
+
+      if (!querySnapshot.empty) {
+        const foodDoc = querySnapshot.docs[0];
+        return { id: foodDoc.id, ...foodDoc.data() } as Food;
+      }
+
+      return null;
+    } catch (error) {
+      console.error("Error searching food library:", error);
+      return null;
+    }
+  };
 
   // Search for food by barcode
   const handleBarcodeSearch = async (barcode?: string) => {
@@ -2704,6 +2871,10 @@ export default function FoodDiaryPage() {
             fatPer100g: "",
             barcode: "",
           });
+          // Stop scanner when dialog closes
+          if (isCreateFoodScanning) {
+            stopCreateFoodScanner();
+          }
         }
       }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
@@ -2733,19 +2904,33 @@ export default function FoodDiaryPage() {
                   value={createFoodData.barcode}
                   onChange={handleCreateFoodChange}
                   placeholder="Enter barcode number or scan"
+                  disabled={isCreateFoodScanning}
                 />
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => {
-                    // TODO: Implement barcode scanner
-                    toast.info("Barcode scanner coming soon!");
-                  }}
+                  onClick={isCreateFoodScanning ? stopCreateFoodScanner : startCreateFoodScanner}
                 >
                   <Scan className="h-4 w-4 mr-2" />
-                  Scan
+                  {isCreateFoodScanning ? "Stop" : "Scan"}
                 </Button>
               </div>
+              {createFoodScanError && (
+                <p className="text-sm text-destructive">{createFoodScanError}</p>
+              )}
+              {/* Scanner View */}
+              {isCreateFoodScanning && (
+                <div className="space-y-2">
+                  <div
+                    id={createFoodScannerElementId}
+                    className="w-full rounded-lg overflow-hidden border-2 border-primary"
+                    style={{ minHeight: "300px" }}
+                  />
+                  <p className="text-sm text-muted-foreground text-center">
+                    Point your camera at a barcode to scan
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">

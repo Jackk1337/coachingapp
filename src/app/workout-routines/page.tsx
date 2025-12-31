@@ -4,20 +4,17 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, query, where, onSnapshot, orderBy, deleteDoc, doc, updateDoc } from "firebase/firestore";
+import { collection, addDoc, query, where, onSnapshot, orderBy, deleteDoc, doc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -25,25 +22,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Trash2, GripVertical, Pencil, ChevronLeft, Plus, Search } from "lucide-react";
+import { Trash2, Pencil, ChevronLeft, Plus, Users } from "lucide-react";
 import { toast } from "sonner";
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  useSortable,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 
 interface Exercise {
   id: string;
@@ -56,36 +36,11 @@ interface Routine {
   name: string;
   exerciseIds: string[];
   userId: string;
-}
-
-// Sortable Item Component
-function SortableExerciseItem({ id, name, onRemove }: { id: string; name: string; onRemove: () => void }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-  } = useSortable({ id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  return (
-    <div ref={setNodeRef} style={style} className="flex items-center justify-between p-2 mb-2 bg-secondary rounded-md">
-      <div className="flex items-center gap-2">
-        <button {...attributes} {...listeners} className="cursor-grab hover:text-primary">
-          <GripVertical className="h-5 w-5 text-muted-foreground" />
-        </button>
-        <span className="font-medium">{name}</span>
-      </div>
-      <Button variant="ghost" size="icon" onClick={onRemove} className="h-8 w-8 text-destructive">
-        <Trash2 className="h-4 w-4" />
-      </Button>
-    </div>
-  );
+  description?: string;
+  difficultyRating?: string;
+  exerciseNotes?: Record<string, string>;
+  sharedToCommunity?: boolean;
+  communityWorkoutId?: string;
 }
 
 export default function WorkoutRoutinesPage() {
@@ -93,24 +48,10 @@ export default function WorkoutRoutinesPage() {
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   
-  // Create/Edit State
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingRoutineId, setEditingRoutineId] = useState<string | null>(null);
-  const [routineName, setRoutineName] = useState("");
-  const [selectedExercises, setSelectedExercises] = useState<Exercise[]>([]);
-  const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
-  
   // Add Exercise Dialog State
   const [isAddExerciseDialogOpen, setIsAddExerciseDialogOpen] = useState(false);
   const [newExerciseName, setNewExerciseName] = useState("");
   const [newExerciseCategory, setNewExerciseCategory] = useState("");
-
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
 
   useEffect(() => {
     if (!user) return;
@@ -130,20 +71,30 @@ export default function WorkoutRoutinesPage() {
       setRoutines(routineList);
     });
 
-    // Fetch Exercises
+    // Fetch Exercises - include both user's exercises and rallyfit exercises
+    // Sort manually to avoid index requirements
     const exercisesQuery = query(
       collection(db, "exercise_library"),
-      where("userId", "==", user.uid),
-      orderBy("name")
+      where("userId", "in", [user.uid, "rallyfit"])
     );
 
-    const unsubscribeExercises = onSnapshot(exercisesQuery, (snapshot) => {
-      const exerciseList: Exercise[] = [];
-      snapshot.forEach((doc) => {
-        exerciseList.push({ id: doc.id, ...doc.data() } as Exercise);
-      });
-      setExercises(exerciseList);
-    });
+    const unsubscribeExercises = onSnapshot(
+      exercisesQuery, 
+      (snapshot) => {
+        const exerciseList: Exercise[] = [];
+        snapshot.forEach((doc) => {
+          exerciseList.push({ id: doc.id, ...doc.data() } as Exercise);
+        });
+        // Sort manually by name
+        exerciseList.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+        setExercises(exerciseList);
+      },
+      (error) => {
+        console.error("Error fetching exercises:", error);
+        toast.error("Failed to load exercises");
+        setExercises([]);
+      }
+    );
 
     return () => {
       unsubscribeRoutines();
@@ -151,66 +102,9 @@ export default function WorkoutRoutinesPage() {
     };
   }, [user]);
 
-  const resetForm = () => {
-    setRoutineName("");
-    setSelectedExercises([]);
-    setEditingRoutineId(null);
-    setExerciseSearchQuery("");
-  };
-
   const resetAddExerciseForm = () => {
     setNewExerciseName("");
     setNewExerciseCategory("");
-  };
-
-  const handleOpenCreate = () => {
-    resetForm();
-    setIsDialogOpen(true);
-  };
-
-  const handleOpenEdit = (routine: Routine) => {
-    setEditingRoutineId(routine.id);
-    setRoutineName(routine.name);
-    // Map existing exerciseIds to full Exercise objects, maintaining order
-    const currentExercises = routine.exerciseIds
-      .map(id => exercises.find(e => e.id === id))
-      .filter((e): e is Exercise => e !== undefined);
-    
-    setSelectedExercises(currentExercises);
-    setIsDialogOpen(true);
-  };
-
-  const handleSaveRoutine = async () => {
-    if (!routineName || selectedExercises.length === 0 || !user) return;
-
-    try {
-      const exerciseIds = selectedExercises.map(e => e.id);
-      
-      if (editingRoutineId) {
-        // Update existing routine
-        await updateDoc(doc(db, "workout_routines", editingRoutineId), {
-          name: routineName,
-          exerciseIds: exerciseIds,
-          updatedAt: new Date(),
-        });
-        toast.success("Routine updated successfully!");
-      } else {
-        // Create new routine
-        await addDoc(collection(db, "workout_routines"), {
-          name: routineName,
-          exerciseIds: exerciseIds,
-          userId: user.uid,
-          createdAt: new Date(),
-        });
-        toast.success("Routine created successfully!");
-      }
-      
-      setIsDialogOpen(false);
-      resetForm();
-    } catch (error) {
-      console.error("Error saving routine: ", error);
-      toast.error("Failed to save routine.");
-    }
   };
 
   const handleDeleteRoutine = async (id: string) => {
@@ -220,28 +114,6 @@ export default function WorkoutRoutinesPage() {
     }
   };
 
-  const toggleExerciseSelection = (exercise: Exercise) => {
-    setSelectedExercises((prev) => {
-      const exists = prev.find((e) => e.id === exercise.id);
-      if (exists) {
-        return prev.filter((e) => e.id !== exercise.id);
-      } else {
-        return [...prev, exercise];
-      }
-    });
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (over && active.id !== over.id) {
-      setSelectedExercises((items) => {
-        const oldIndex = items.findIndex((item) => item.id === active.id);
-        const newIndex = items.findIndex((item) => item.id === over.id);
-        return arrayMove(items, oldIndex, newIndex);
-      });
-    }
-  };
 
   const getExerciseName = (id: string) => {
     const exercise = exercises.find((e) => e.id === id);
@@ -252,52 +124,22 @@ export default function WorkoutRoutinesPage() {
     if (!newExerciseName || !newExerciseCategory || !user) return;
 
     try {
-      const docRef = await addDoc(collection(db, "exercise_library"), {
+      await addDoc(collection(db, "exercise_library"), {
         name: newExerciseName,
         category: newExerciseCategory,
         userId: user.uid,
         createdAt: new Date(),
       });
       
-      // Automatically add the new exercise to selected exercises
-      const newExercise: Exercise = {
-        id: docRef.id,
-        name: newExerciseName,
-        category: newExerciseCategory as Exercise["category"],
-      };
-      setSelectedExercises((prev) => [...prev, newExercise]);
-      
       resetAddExerciseForm();
       setIsAddExerciseDialogOpen(false);
-      toast.success("Exercise created and added to routine!");
+      toast.success("Exercise created successfully!");
     } catch (error) {
       console.error("Error adding exercise: ", error);
       toast.error("Failed to create exercise.");
     }
   };
 
-  // Filter exercises based on search query
-  const filteredExercises = exercises.filter((exercise) => {
-    if (!exerciseSearchQuery.trim()) return true;
-    const query = exerciseSearchQuery.toLowerCase();
-    return (
-      exercise.name.toLowerCase().includes(query) ||
-      exercise.category.toLowerCase().includes(query)
-    );
-  });
-
-  // Group filtered exercises by category
-  const exercisesByCategory = filteredExercises.reduce((acc, exercise) => {
-    const category = exercise.category || "Uncategorized";
-    if (!acc[category]) {
-      acc[category] = [];
-    }
-    acc[category].push(exercise);
-    return acc;
-  }, {} as Record<string, Exercise[]>);
-
-  // Sort categories alphabetically
-  const sortedCategories = Object.keys(exercisesByCategory).sort();
 
   return (
     <div className="min-h-screen bg-background">
@@ -315,134 +157,17 @@ export default function WorkoutRoutinesPage() {
       </div>
 
       <div className="px-4 py-6 max-w-lg mx-auto">
-
-      <Dialog open={isDialogOpen} onOpenChange={(open) => {
-        setIsDialogOpen(open);
-        if (!open) resetForm();
-      }}>
-        <DialogTrigger asChild>
-          <Button className="w-full mb-6" onClick={handleOpenCreate}>Create New Routine</Button>
-        </DialogTrigger>
-        <DialogContent className="max-h-[90vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{editingRoutineId ? "Edit Workout Routine" : "Create Workout Routine"}</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4 flex-1 overflow-hidden flex flex-col">
-            <div className="grid gap-2">
-              <Label htmlFor="name">Routine Name</Label>
-              <Input
-                id="name"
-                value={routineName}
-                onChange={(e) => setRoutineName(e.target.value)}
-                placeholder="e.g. Push Day"
-              />
-            </div>
-
-            <div className="flex-1 overflow-hidden flex flex-col min-h-[200px]">
-              <div className="grid grid-cols-2 gap-4 h-full">
-                {/* Available Exercises */}
-                <div className="flex flex-col h-full border rounded-md overflow-hidden">
-                  <div className="p-2 bg-muted font-medium text-sm border-b flex items-center justify-between">
-                    <span>All Exercises</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 px-2 text-xs"
-                      onClick={() => setIsAddExerciseDialogOpen(true)}
-                    >
-                      <Plus className="h-3 w-3 mr-1" />
-                      New
-                    </Button>
-                  </div>
-                  <div className="p-2 border-b">
-                    <div className="relative">
-                      <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="Search exercises..."
-                        value={exerciseSearchQuery}
-                        onChange={(e) => setExerciseSearchQuery(e.target.value)}
-                        className="pl-8 h-8 text-sm"
-                      />
-                    </div>
-                  </div>
-                  <ScrollArea className="flex-1 p-2">
-                    {sortedCategories.length > 0 ? (
-                      sortedCategories.map((category) => (
-                        <div key={category} className="mb-4">
-                          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 sticky top-0 bg-background py-1 z-10">
-                            {category}
-                          </h3>
-                          <div className="space-y-1">
-                            {exercisesByCategory[category].map((exercise) => {
-                              const isSelected = selectedExercises.some(e => e.id === exercise.id);
-                              return (
-                                <div key={exercise.id} className="flex items-center space-x-2 mb-1">
-                                  <Checkbox
-                                    id={exercise.id}
-                                    checked={isSelected}
-                                    onCheckedChange={() => toggleExerciseSelection(exercise)}
-                                  />
-                                  <Label htmlFor={exercise.id} className="cursor-pointer text-sm flex-1">
-                                    {exercise.name}
-                                  </Label>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <>
-                        {filteredExercises.length === 0 && exercises.length > 0 && (
-                          <p className="text-xs text-muted-foreground">No exercises match your search.</p>
-                        )}
-                        {exercises.length === 0 && (
-                          <p className="text-xs text-muted-foreground">No exercises found. Create one!</p>
-                        )}
-                      </>
-                    )}
-                  </ScrollArea>
-                </div>
-
-                {/* Selected Exercises (Sortable) */}
-                <div className="flex flex-col h-full border rounded-md overflow-hidden">
-                  <div className="p-2 bg-muted font-medium text-sm border-b">Selected (Drag to Order)</div>
-                  <ScrollArea className="flex-1 p-2">
-                    <DndContext 
-                      sensors={sensors} 
-                      collisionDetection={closestCenter} 
-                      onDragEnd={handleDragEnd}
-                    >
-                      <SortableContext 
-                        items={selectedExercises.map(e => e.id)} 
-                        strategy={verticalListSortingStrategy}
-                      >
-                        {selectedExercises.map((exercise) => (
-                          <SortableExerciseItem 
-                            key={exercise.id} 
-                            id={exercise.id} 
-                            name={exercise.name} 
-                            onRemove={() => toggleExerciseSelection(exercise)} 
-                          />
-                        ))}
-                      </SortableContext>
-                    </DndContext>
-                    {selectedExercises.length === 0 && (
-                        <div className="text-center py-4 text-xs text-muted-foreground">
-                            Select exercises from the left list.
-                        </div>
-                    )}
-                  </ScrollArea>
-                </div>
-              </div>
-            </div>
-
-            <Button onClick={handleSaveRoutine} disabled={!routineName || selectedExercises.length === 0}>
-              {editingRoutineId ? "Update Routine" : "Save Routine"}
+        <div className="flex gap-2 mb-6">
+          <Link href="/workout-routines/create" className="flex-1">
+            <Button className="w-full">Create New Routine</Button>
+          </Link>
+          <Link href="/community/workouts" className="flex-1">
+            <Button variant="outline" className="w-full flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Browse Community Workouts
             </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </Link>
+        </div>
 
       {/* Add New Exercise Dialog */}
       <Dialog open={isAddExerciseDialogOpen} onOpenChange={(open) => {
@@ -491,13 +216,14 @@ export default function WorkoutRoutinesPage() {
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-lg">{routine.name}</CardTitle>
               <div className="flex gap-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleOpenEdit(routine)}
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
+                <Link href={`/workout-routines/${routine.id}/edit`}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </Link>
                 <Button
                   variant="ghost"
                   size="icon"

@@ -47,7 +47,7 @@ export default function ExerciseLibraryPage() {
 
     const q = query(
       collection(db, "exercise_library"),
-      where("userId", "==", user.uid),
+      where("userId", "in", [user.uid, "rallyfit"]),
       orderBy("name")
     );
 
@@ -80,9 +80,15 @@ export default function ExerciseLibraryPage() {
     }
   };
 
-  const handleDeleteExercise = async (id: string) => {
+  const handleDeleteExercise = async (exercise: Exercise) => {
+    // Only allow users to delete their own exercises, not rallyfit ones
+    if (exercise.userId !== user?.uid) {
+      alert("You can only delete your own exercises.");
+      return;
+    }
+    
     if (confirm("Are you sure you want to delete this exercise?")) {
-      await deleteDoc(doc(db, "exercise_library", id));
+      await deleteDoc(doc(db, "exercise_library", exercise.id));
     }
   };
 
@@ -151,13 +157,15 @@ export default function ExerciseLibraryPage() {
                   {exercise.category}
                 </Badge>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => handleDeleteExercise(exercise.id)}
-              >
-                <Trash2 className="h-4 w-4 text-destructive" />
-              </Button>
+              {exercise.userId === user?.uid && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleDeleteExercise(exercise)}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              )}
             </CardContent>
           </Card>
         ))}

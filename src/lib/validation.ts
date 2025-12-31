@@ -20,3 +20,6 @@ export const generateCoachingMessageSchema = z.object({
  */
 export const firebaseUidSchema = z.string().length(28).regex(/^[a-zA-Z0-9]+$/);
 
+
+
+

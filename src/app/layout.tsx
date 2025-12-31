@@ -18,14 +18,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Coaching App",
+  title: "RallyFit",
   description: "Track your fitness journey",
   manifest: "/manifest.json",
   themeColor: "#000000",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Coaching App",
+    title: "RallyFit",
   },
   icons: {
     apple: "/icon-192.png",

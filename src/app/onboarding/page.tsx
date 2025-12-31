@@ -12,8 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, doc, getDoc } from "firebase/firestore";
-import { calculateAge } from "@/lib/utils";
+import { collection, getDocs, doc, getDoc, query, where } from "firebase/firestore";
+import { calculateAge, validateHandleFormat, normalizeHandle, setHandleAtomically } from "@/lib/utils";
 import { calculateCompleteMacros, type ActivityLevel, type GoalType, type Gender } from "@/lib/tdee-calculator";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
@@ -48,9 +48,12 @@ export default function OnboardingPage() {
 
   // Step 1: Basic Info
   const [basicInfo, setBasicInfo] = useState({
+    handle: "",
     weight: "",
     height: "",
   });
+  const [checkingHandle, setCheckingHandle] = useState(false);
+  const [handleError, setHandleError] = useState<string | null>(null);
 
   // Step 2: Goals & TDEE
   const [goalsInfo, setGoalsInfo] = useState({
@@ -148,7 +151,8 @@ export default function OnboardingPage() {
   useEffect(() => {
     if (profile) {
       if (profile.dateOfBirth) setDateOfBirth(profile.dateOfBirth);
-      if (profile.weight) setBasicInfo({ weight: profile.weight.toString(), height: profile.height?.toString() || "" });
+      if (profile.handle) setBasicInfo(prev => ({ ...prev, handle: profile.handle || "" }));
+      if (profile.weight) setBasicInfo(prev => ({ ...prev, weight: profile.weight?.toString() || "", height: profile.height?.toString() || "" }));
       if (profile.goals) {
         setGoalsInfo({
           goalType: profile.goals.goalType || "",
@@ -168,7 +172,7 @@ export default function OnboardingPage() {
     }
   }, [profile]);
 
-  const handleNext = () => {
+  const handleNext = async () => {
     // Validation for each step
     if (needsDateOfBirth && step === 0) {
       // Step 0: Date of Birth (only if missing)
@@ -182,6 +186,42 @@ export default function OnboardingPage() {
         toast.error("Failed to save date of birth. Please try again.");
       });
     } else if (step === 1 || (needsDateOfBirth && step === 1)) {
+      // Validate handle
+      if (!basicInfo.handle || basicInfo.handle.trim() === "") {
+        toast.error("Please enter a handle");
+        return;
+      }
+      const handleValidation = validateHandleFormat(basicInfo.handle);
+      if (!handleValidation.isValid) {
+        toast.error(handleValidation.error || "Invalid handle format");
+        setHandleError(handleValidation.error || "Invalid handle format");
+        return;
+      }
+      
+      // Validate handle (uniqueness will be checked atomically when saving)
+      setCheckingHandle(true);
+      setHandleError(null);
+      try {
+        // Quick pre-check for better UX (non-atomic)
+        const usersRef = collection(db, "users");
+        const normalizedHandle = normalizeHandle(basicInfo.handle);
+        const q = query(usersRef, where("handle", "==", normalizedHandle));
+        const querySnapshot = await getDocs(q);
+        const handleTaken = querySnapshot.docs.length > 0 && 
+          (!user?.uid || !querySnapshot.docs.some(doc => doc.id === user.uid));
+        
+        if (handleTaken) {
+          toast.error("This handle is already taken. Please choose another one.");
+          setHandleError("This handle is already taken");
+          setCheckingHandle(false);
+          return;
+        }
+      } catch (error) {
+        console.error("Error checking handle:", error);
+        // Continue anyway - atomic check will happen on save
+      }
+      setCheckingHandle(false);
+      
       if (!basicInfo.weight || !basicInfo.height) {
         toast.error("Please enter your weight and height");
         return;
@@ -264,8 +304,12 @@ export default function OnboardingPage() {
 
     setLoading(true);
     try {
+      // Set handle atomically first to ensure uniqueness
+      await setHandleAtomically(user.uid, basicInfo.handle);
+      
       // Prepare profile update
       const profileUpdate: any = {
+        handle: normalizeHandle(basicInfo.handle),
         weight: parseFloat(basicInfo.weight),
         height: parseFloat(basicInfo.height),
         experienceLevel: goalsInfo.experienceLevel,
@@ -381,6 +425,68 @@ export default function OnboardingPage() {
           {/* Step 1: Basic Info */}
           {((needsDateOfBirth && step === 1) || (!needsDateOfBirth && step === 1)) && (
             <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="handle">Handle</Label>
+                <div className="relative">
+                  <Input
+                    id="handle"
+                    type="text"
+                    placeholder="@username"
+                    value={basicInfo.handle}
+                    onChange={(e) => {
+                      setBasicInfo({ ...basicInfo, handle: e.target.value });
+                      setHandleError(null);
+                    }}
+                    onBlur={async () => {
+                      if (basicInfo.handle && basicInfo.handle.trim() !== "" && user) {
+                        const validation = validateHandleFormat(basicInfo.handle);
+                        if (!validation.isValid) {
+                          setHandleError(validation.error || "Invalid handle format");
+                          return;
+                        }
+                        setCheckingHandle(true);
+                        try {
+                          // Quick check for UI feedback (non-atomic)
+                          const usersRef = collection(db, "users");
+                          const normalizedHandle = normalizeHandle(basicInfo.handle);
+                          const q = query(usersRef, where("handle", "==", normalizedHandle));
+                          const querySnapshot = await getDocs(q);
+                          const handleTaken = querySnapshot.docs.length > 0 && 
+                            !querySnapshot.docs.some(doc => doc.id === user.uid);
+                          
+                          if (handleTaken) {
+                            setHandleError("This handle is already taken");
+                          } else {
+                            setHandleError(null);
+                          }
+                        } catch (error) {
+                          // Silently fail on blur - atomic check will happen on save
+                          setHandleError(null);
+                        } finally {
+                          setCheckingHandle(false);
+                        }
+                      }
+                    }}
+                    className={handleError ? "border-destructive" : ""}
+                  />
+                  {checkingHandle && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                      Checking...
+                    </span>
+                  )}
+                </div>
+                {handleError && (
+                  <p className="text-xs text-destructive">{handleError}</p>
+                )}
+                {!handleError && basicInfo.handle && (
+                  <p className="text-xs text-muted-foreground">
+                    Your handle will be displayed as {normalizeHandle(basicInfo.handle)}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Choose a unique handle that others can use to find you. Must be 3-30 characters, start with a letter, and contain only letters, numbers, and underscores.
+                </p>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="weight">Weight (kg)</Label>
                 <Input

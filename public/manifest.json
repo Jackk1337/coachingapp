@@ -1,6 +1,6 @@
 {
-  "name": "Coaching App",
-  "short_name": "Coaching",
+  "name": "RallyFit",
+  "short_name": "RallyFit",
   "description": "Track your fitness journey with workouts, food diary, and AI coaching",
   "start_url": "/",
   "display": "standalone",
@@ -22,4 +22,7 @@
     }
   ]
 }
+
+
+
 

@@ -1,0 +1,223 @@
+{
+    "success": true,
+    "count": 31,
+    "exercises": [
+        {
+            "id": "aRdRCjtU4Pp68ONR0iqS",
+            "name": "Barbell Rows ",
+            "category": "Back",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-11T12:13:04.658Z"
+        },
+        {
+            "id": "oVjzRXVuTO40d9iAIej9",
+            "name": "Bicep Cable Curl",
+            "category": "Biceps",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-11T14:12:48.225Z"
+        },
+        {
+            "id": "0836fHhbFLId4q62N2oy",
+            "name": "Cable Chest Flies",
+            "category": "Chest",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-09T10:27:38.749Z"
+        },
+        {
+            "id": "n4lQ7Sm6Eq2AcGcOqAKq",
+            "name": "Cable Overhead Tricep Extension",
+            "category": "Triceps",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-09T10:28:07.694Z"
+        },
+        {
+            "id": "sfxG4IT170gRTCEKkzA5",
+            "name": "Chest Press Machine ",
+            "category": "Chest",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-22T12:50:45.936Z"
+        },
+        {
+            "id": "9atEnz6iRXEbEuyG3sRg",
+            "name": "Deadlift ",
+            "category": "Back",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-14T10:12:08.645Z"
+        },
+        {
+            "id": "Q2K3ty5LiGekCqzTdCNA",
+            "name": "Dumbbell Skull Crusher",
+            "category": "Triceps",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-09T10:27:54.313Z"
+        },
+        {
+            "id": "4wi09rtoYzwVVPBhith8",
+            "name": "EZ-Bar Preacher Curl",
+            "category": "Biceps",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-13T13:24:58.949Z"
+        },
+        {
+            "id": "ylHlXOpWRjhXyyR4qjwb",
+            "name": "Flat Barbell Bench Press",
+            "category": "Chest",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-09T10:26:57.239Z"
+        },
+        {
+            "id": "5WjYpkiSmpFeP6wounY1",
+            "name": "Front Raise ",
+            "category": "Shoulders",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-13T12:00:12.535Z"
+        },
+        {
+            "id": "cIo9kwpefEIe2jradLHJ",
+            "name": "Hack Squat ",
+            "category": "Legs",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-14T10:12:46.323Z"
+        },
+        {
+            "id": "Pg4aPPhRGrBQX4SvCo1O",
+            "name": "Incline Chest Machine (Plate Loaded)",
+            "category": "Chest",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-09T10:27:12.185Z"
+        },
+        {
+            "id": "50sAB8GlKLjPTahOuHp4",
+            "name": "Incline Dumbbell Bench Press",
+            "category": "Chest",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-09T10:27:30.708Z"
+        },
+        {
+            "id": "2NMVLN3pu89e75EQt4cY",
+            "name": "Lat Pulldown ",
+            "category": "Back",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-11T12:15:47.766Z"
+        },
+        {
+            "id": "zZdQv7lCE2fshRnOdeOQ",
+            "name": "Leg Press ",
+            "category": "Legs",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-14T10:58:24.080Z"
+        },
+        {
+            "id": "Ft8VKbPZwiPMDv1Xb0pt",
+            "name": "Lying Hamstring Curl",
+            "category": "Legs",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-14T10:12:22.239Z"
+        },
+        {
+            "id": "WTukndQiko3oGMfXknab",
+            "name": "Pec Deck",
+            "category": "Chest",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-09T10:27:45.070Z"
+        },
+        {
+            "id": "CR6bOMJB6UIbfhe5hknB",
+            "name": "Plate Loaded Lat Pulldown",
+            "category": "Back",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-11T14:12:27.570Z"
+        },
+        {
+            "id": "iaoVLVp4uu27EuwGqQu4",
+            "name": "Plate Loaded Lat Pulldown (Singles)",
+            "category": "Back",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-11T14:12:37.436Z"
+        },
+        {
+            "id": "SFzby4cCTxjhjsbNWHFE",
+            "name": "Plate Loaded Shoulder Press ",
+            "category": "Shoulders",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-13T11:43:58.218Z"
+        },
+        {
+            "id": "PfTiuUuwwShkoACICGz8",
+            "name": "Seated Cable Row",
+            "category": "Back",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-11T14:12:17.444Z"
+        },
+        {
+            "id": "3UkiayUNCG1SDhGUt6p5",
+            "name": "Seated Calf Raises ",
+            "category": "Legs",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-21T12:33:59.105Z"
+        },
+        {
+            "id": "sPkDrxgbRrs2ksibSsvB",
+            "name": "Seated Leg Raises ",
+            "category": "Legs",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-14T10:12:36.165Z"
+        },
+        {
+            "id": "dxBAUmxSCe4AjrWoUf0a",
+            "name": "Seated Smith Machine Shoulder Press ",
+            "category": "Shoulders",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-10T20:45:42.101Z"
+        },
+        {
+            "id": "6xsdFuL5tvG45WDLHSpv",
+            "name": "Side Lateral Raise ",
+            "category": "Shoulders",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-13T11:48:04.300Z"
+        },
+        {
+            "id": "ieB41dT6sTCvOC4u2uBI",
+            "name": "Side Lateral Raise (Machine)",
+            "category": "Shoulders",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-19T12:22:47.109Z"
+        },
+        {
+            "id": "aNfmxCNX8KFckzSZYWLy",
+            "name": "Single Arm Tricep Extension ",
+            "category": "Triceps",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-28T12:24:16.740Z"
+        },
+        {
+            "id": "R45FLPNUsla2pbkTFrUN",
+            "name": "Standing Calf Raises ",
+            "category": "Legs",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-14T10:12:57.778Z"
+        },
+        {
+            "id": "6N0VKlVtNjRGf6aEHt5U",
+            "name": "T-Bar Row Machine (Plate Loaded)",
+            "category": "Back",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-17T12:53:50.827Z"
+        },
+        {
+            "id": "50TvAcp8qom1HOzksOTW",
+            "name": "Tricep Rope Push Down",
+            "category": "Triceps",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-09T10:28:25.532Z"
+        },
+        {
+            "id": "btzmFeb35j55pg9jyaCu",
+            "name": "Tricep V-Bar Push Down",
+            "category": "Triceps",
+            "userId": "rallyfit",
+            "createdAt": "2025-12-09T10:28:37.493Z"
+        }
+    ]
+}

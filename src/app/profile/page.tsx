@@ -26,7 +26,8 @@ import {
 import { ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc, query, where } from "firebase/firestore";
+import { validateHandleFormat, normalizeHandle, setHandleAtomically } from "@/lib/utils";
 
 // Calorie constants per gram
 const CALORIES_PER_GRAM_PROTEIN = 4;
@@ -48,6 +49,9 @@ export default function ProfilePage() {
   const [selectedCoach, setSelectedCoach] = useState<Coach | null>(null);
   const [loadingCoaches, setLoadingCoaches] = useState(false);
   const [loadingSelectedCoach, setLoadingSelectedCoach] = useState(false);
+  const [handle, setHandle] = useState("");
+  const [checkingHandle, setCheckingHandle] = useState(false);
+  const [handleError, setHandleError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     goalType: "",
     calorieLimit: "",
@@ -68,6 +72,7 @@ export default function ProfilePage() {
       const goalTypeRaw = profile.goals?.goalType || (profile as any).goalType || "";
       const goalType = typeof goalTypeRaw === "string" ? goalTypeRaw.trim() : "";
       
+      setHandle(profile.handle || "");
       setFormData({
         goalType: goalType,
         calorieLimit: profile.goals?.calorieLimit?.toString() || "",
@@ -257,6 +262,40 @@ export default function ProfilePage() {
     }
   };
 
+  const handleUpdateHandle = async () => {
+    if (!handle || handle.trim() === "" || !user) {
+      toast.error("Please enter a handle");
+      return;
+    }
+
+    const validation = validateHandleFormat(handle);
+    if (!validation.isValid) {
+      toast.error(validation.error || "Invalid handle format");
+      setHandleError(validation.error || "Invalid handle format");
+      return;
+    }
+
+    setCheckingHandle(true);
+    setHandleError(null);
+    try {
+      // Use atomic transaction to ensure uniqueness
+      await setHandleAtomically(user.uid, handle, profile?.handle);
+      
+      // Refresh profile after successful update
+      await updateProfile({ handle: normalizeHandle(handle) });
+      
+      toast.success("Handle updated successfully!");
+      setHandleError(null);
+    } catch (error: any) {
+      console.error("Error updating handle:", error);
+      const errorMessage = error.message || "Failed to update handle";
+      toast.error(errorMessage);
+      setHandleError(errorMessage);
+    } finally {
+      setCheckingHandle(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -280,8 +319,85 @@ export default function ProfilePage() {
           <AvatarFallback>{user?.displayName?.charAt(0) || "U"}</AvatarFallback>
         </Avatar>
         <h2 className="text-xl font-semibold">{user?.displayName}</h2>
+        {profile?.handle && (
+          <p className="text-primary font-medium">{profile.handle}</p>
+        )}
         <p className="text-muted-foreground">{user?.email}</p>
       </div>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Handle</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <Label htmlFor="handle-input">Your Handle</Label>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Input
+                  id="handle-input"
+                  type="text"
+                  placeholder="@username"
+                  value={handle}
+                  onChange={(e) => {
+                    setHandle(e.target.value);
+                    setHandleError(null);
+                  }}
+                  onBlur={async () => {
+                    if (handle && handle.trim() !== "" && handle !== profile?.handle && user) {
+                      const validation = validateHandleFormat(handle);
+                      if (!validation.isValid) {
+                        setHandleError(validation.error || "Invalid handle format");
+                        return;
+                      }
+                      setCheckingHandle(true);
+                      try {
+                        // Quick check (non-atomic, just for UI feedback)
+                        const usersRef = collection(db, "users");
+                        const q = query(usersRef, where("handle", "==", normalizeHandle(handle)));
+                        const querySnapshot = await getDocs(q);
+                        const handleTaken = querySnapshot.docs.some(doc => doc.id !== user.uid);
+                        
+                        if (handleTaken) {
+                          setHandleError("This handle is already taken");
+                        } else {
+                          setHandleError(null);
+                        }
+                      } catch (error) {
+                        // Silently fail on blur check - user will get error on save
+                        setHandleError(null);
+                      } finally {
+                        setCheckingHandle(false);
+                      }
+                    }
+                  }}
+                  className={handleError ? "border-destructive" : ""}
+                />
+                {checkingHandle && (
+                  <p className="text-xs text-muted-foreground mt-1">Checking availability...</p>
+                )}
+                {handleError && (
+                  <p className="text-xs text-destructive mt-1">{handleError}</p>
+                )}
+                {!handleError && handle && handle !== profile?.handle && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Will be saved as {normalizeHandle(handle)}
+                  </p>
+                )}
+              </div>
+              <Button
+                onClick={handleUpdateHandle}
+                disabled={checkingHandle || !handle || handle === profile?.handle || !!handleError}
+              >
+                Save
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Your handle is how others can find you. Must be 3-30 characters, start with a letter, and contain only letters, numbers, and underscores.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

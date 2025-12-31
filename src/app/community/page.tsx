@@ -23,8 +23,8 @@ export default function CommunityPage() {
 
       <div className="px-4 py-6 max-w-lg mx-auto">
         <div className="space-y-4">
-          {/* Community Workouts Card */}
-          <Link href="/community/workouts">
+          {/* Community Workout Programs Card */}
+          <Link href="/community/workout-programs">
             <Card className="hover:border-primary transition-colors cursor-pointer">
               <CardHeader>
                 <div className="flex items-center gap-4">
@@ -32,9 +32,9 @@ export default function CommunityPage() {
                     <Dumbbell className="h-8 w-8 text-primary" />
                   </div>
                   <div className="flex-1">
-                    <CardTitle className="text-xl">Community Workouts</CardTitle>
+                    <CardTitle className="text-xl">Community Workout Programs</CardTitle>
                     <CardDescription className="mt-1">
-                      Browse and copy workout routines developed by the community
+                      Browse and copy workout programs developed by the community
                     </CardDescription>
                   </div>
                 </div>

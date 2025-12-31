@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
-import { collection, query, where, onSnapshot, orderBy, addDoc, getDoc, doc, deleteDoc } from "firebase/firestore";
+import { collection, query, where, onSnapshot, orderBy, addDoc, getDoc, doc, deleteDoc, getDocs, documentId } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { format, addDays, subDays } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,13 @@ import { toast } from "sonner";
 interface Routine {
   id: string;
   name: string;
+  programId?: string;
+}
+
+interface Program {
+  id: string;
+  name: string;
+  routineIds?: string[];
 }
 
 interface WorkoutSession {
@@ -36,7 +43,9 @@ export default function WorkoutLogPage() {
   const { user } = useAuth();
   const router = useRouter();
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [programs, setPrograms] = useState<Program[]>([]);
   const [routines, setRoutines] = useState<Routine[]>([]);
+  const [selectedProgramId, setSelectedProgramId] = useState<string>("");
   const [todaysWorkouts, setTodaysWorkouts] = useState<WorkoutSession[]>([]);
   const [isStartWorkoutOpen, setIsStartWorkoutOpen] = useState(false);
 
@@ -47,19 +56,19 @@ export default function WorkoutLogPage() {
   useEffect(() => {
     if (!user) return;
 
-    // Fetch Routines for selection
-    const routinesQuery = query(
-      collection(db, "workout_routines"),
+    // Fetch Programs
+    const programsQuery = query(
+      collection(db, "workout_programs"),
       where("userId", "==", user.uid),
       orderBy("name")
     );
 
-    const unsubscribeRoutines = onSnapshot(routinesQuery, (snapshot) => {
-      const routineList: Routine[] = [];
+    const unsubscribePrograms = onSnapshot(programsQuery, (snapshot) => {
+      const programList: Program[] = [];
       snapshot.forEach((doc) => {
-        routineList.push({ id: doc.id, ...doc.data() } as Routine);
+        programList.push({ id: doc.id, ...doc.data() } as Program);
       });
-      setRoutines(routineList);
+      setPrograms(programList);
     });
 
     // Fetch Workouts for current date
@@ -78,10 +87,69 @@ export default function WorkoutLogPage() {
     });
 
     return () => {
-      unsubscribeRoutines();
+      unsubscribePrograms();
       unsubscribeWorkouts();
     };
   }, [user, dbDate]);
+
+  // Fetch routines when program is selected
+  useEffect(() => {
+    if (!user || !selectedProgramId) {
+      setRoutines([]);
+      return;
+    }
+
+    const fetchRoutinesForProgram = async () => {
+      try {
+        // Get program to find routineIds
+        const programDoc = await getDoc(doc(db, "workout_programs", selectedProgramId));
+        if (!programDoc.exists()) {
+          setRoutines([]);
+          return;
+        }
+
+        const programData = programDoc.data() as Program;
+        const routineIds = programData.routineIds || [];
+
+        if (routineIds.length === 0) {
+          setRoutines([]);
+          return;
+        }
+
+        // Fetch routines in batches (Firestore 'in' limit is 10)
+        const batchSize = 10;
+        const batches = [];
+        for (let i = 0; i < routineIds.length; i += batchSize) {
+          batches.push(routineIds.slice(i, i + batchSize));
+        }
+
+        const allRoutines: Routine[] = [];
+        await Promise.all(
+          batches.map(async (batch) => {
+            const routinesQuery = query(
+              collection(db, "workout_routines"),
+              where(documentId(), "in", batch),
+              where("userId", "==", user.uid)
+            );
+            const snapshot = await getDocs(routinesQuery);
+            snapshot.forEach((doc) => {
+              allRoutines.push({ id: doc.id, ...doc.data() } as Routine);
+            });
+          })
+        );
+
+        // Sort by name
+        allRoutines.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+        setRoutines(allRoutines);
+      } catch (error) {
+        console.error("Error fetching routines:", error);
+        toast.error("Failed to load routines");
+        setRoutines([]);
+      }
+    };
+
+    fetchRoutinesForProgram();
+  }, [user, selectedProgramId]);
 
   const handleDateChange = (days: number) => {
     setCurrentDate((prev) => (days > 0 ? addDays(prev, days) : subDays(prev, Math.abs(days))));
@@ -158,9 +226,9 @@ export default function WorkoutLogPage() {
 
       <div className="px-4 py-3 border-b bg-muted/30">
         <div className="flex gap-2 mb-3">
-          <Link href="/workout-routines" className="flex-1">
+          <Link href="/workout-programs" className="flex-1">
             <Button variant="outline" className="w-full" size="sm">
-              Workout Routines
+              Workout Programs
             </Button>
           </Link>
           <Link href="/exercise-library" className="flex-1">
@@ -169,7 +237,13 @@ export default function WorkoutLogPage() {
             </Button>
           </Link>
         </div>
-        <Dialog open={isStartWorkoutOpen} onOpenChange={setIsStartWorkoutOpen}>
+        <Dialog open={isStartWorkoutOpen} onOpenChange={(open) => {
+          setIsStartWorkoutOpen(open);
+          if (!open) {
+            setSelectedProgramId("");
+            setRoutines([]);
+          }
+        }}>
           <DialogTrigger asChild>
             <Button className="w-full" size="sm">
               <Plus className="mr-2 h-4 w-4" /> Start New Workout
@@ -177,35 +251,69 @@ export default function WorkoutLogPage() {
           </DialogTrigger>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Select a Routine</DialogTitle>
+            <DialogTitle>
+              {selectedProgramId ? "Select a Routine" : "Select a Program"}
+            </DialogTitle>
           </DialogHeader>
           <ScrollArea className="h-[300px] mt-2">
-            <div className="grid gap-2 pr-4">
-              {routines.map((routine) => (
+            {!selectedProgramId ? (
+              <div className="grid gap-2 pr-4">
+                {programs.map((program) => (
+                  <Button
+                    key={program.id}
+                    variant="secondary"
+                    className="w-full justify-start text-left h-auto py-3 px-4"
+                    onClick={() => setSelectedProgramId(program.id)}
+                  >
+                    <div className="flex flex-col items-start">
+                      <span className="font-medium">{program.name}</span>
+                      <span className="text-xs text-muted-foreground mt-1">
+                        {program.routineIds?.length || 0} routines
+                      </span>
+                    </div>
+                  </Button>
+                ))}
+                {programs.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No programs found. Please create one first.
+                    <div className="mt-4">
+                      <Link href="/workout-programs">
+                        <Button variant="outline" onClick={() => setIsStartWorkoutOpen(false)}>
+                          Go to Programs
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid gap-2 pr-4">
                 <Button
-                  key={routine.id}
-                  variant="secondary"
-                  className="w-full justify-start text-left h-auto py-3 px-4"
-                  onClick={() => handleStartWorkout(routine)}
+                  variant="ghost"
+                  className="w-full justify-start mb-2"
+                  onClick={() => setSelectedProgramId("")}
                 >
-                  <div className="flex flex-col items-start">
-                    <span className="font-medium">{routine.name}</span>
-                  </div>
+                  ← Back to Programs
                 </Button>
-              ))}
-              {routines.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground">
-                  No routines found. Please create one first.
-                  <div className="mt-4">
-                    <Link href="/workout-routines">
-                      <Button variant="outline" onClick={() => setIsStartWorkoutOpen(false)}>
-                        Go to Routines
-                      </Button>
-                    </Link>
+                {routines.map((routine) => (
+                  <Button
+                    key={routine.id}
+                    variant="secondary"
+                    className="w-full justify-start text-left h-auto py-3 px-4"
+                    onClick={() => handleStartWorkout(routine)}
+                  >
+                    <div className="flex flex-col items-start">
+                      <span className="font-medium">{routine.name}</span>
+                    </div>
+                  </Button>
+                ))}
+                {routines.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No routines in this program.
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </ScrollArea>
         </DialogContent>
         </Dialog>

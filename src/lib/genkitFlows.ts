@@ -1,6 +1,7 @@
 import { ai } from './genkit';
 import { googleAI } from '@genkit-ai/googleai';
 import { WeeklyData } from './weeklyDataCollector';
+import { DailyMessageData } from './dailyMessageDataCollector';
 
 /**
  * Formats weekly data into a structured string for AI analysis
@@ -258,7 +259,13 @@ async function retryWithBackoff<T>(
 export async function generateCoachingMessage(
   data: WeeklyData,
   coachName: string = 'AI Coach',
-  coachPersona: string = ''
+  coachPersona: string = '',
+  customIntensityLevels?: {
+    Low?: string;
+    Medium?: string;
+    High?: string;
+    Extreme?: string;
+  }
 ): Promise<{ subject: string; body: string }> {
   const formattedData = formatWeeklyDataForAI(data);
 
@@ -280,17 +287,29 @@ export async function generateCoachingMessage(
     experienceInstruction = '\n\nEXPERIENCE LEVEL: The client is ADVANCED - they know about calorie counting, macros, and the gym and require feedback. You MUST:\n- Provide minimal explanations of basic concepts\n- Focus on advanced strategies, optimization, and fine-tuning\n- Use technical terminology freely\n- Provide sophisticated, nuanced feedback';
   }
 
-  // Build coach intensity instruction
+  // Build coach intensity instruction - use custom if available, otherwise use default
   const coachIntensity = data.userProfile?.coachIntensity || 'Not set';
   let intensityInstruction = '';
-  if (coachIntensity === 'Low') {
-    intensityInstruction = '\n\nCOACH INTENSITY: LOW - You should be:\n- Supportive, gentle, and understanding\n- Less pushy when goals aren\'t met\n- Focus on encouragement and positive reinforcement\n- Use a softer, more empathetic tone\n- Acknowledge challenges without being demanding';
-  } else if (coachIntensity === 'Medium') {
-    intensityInstruction = '\n\nCOACH INTENSITY: MEDIUM - You should be:\n- Balanced in your approach\n- Encouraging but firm when needed\n- Hold them accountable while remaining supportive\n- Use a professional, motivational tone\n- Push appropriately but not excessively';
-  } else if (coachIntensity === 'High') {
-    intensityInstruction = '\n\nCOACH INTENSITY: HIGH - You should be:\n- More direct and assertive\n- Push harder when goals aren\'t met\n- Use strong motivational language\n- Hold them strictly accountable\n- Challenge them to do better\n- Use a more intense, driven tone while remaining professional';
-  } else if (coachIntensity === 'Extreme') {
-    intensityInstruction = '\n\nCOACH INTENSITY: EXTREME - You should be:\n- Do NOT hold back - be brutally honest and direct\n- SWEARING IS ALLOWED AND ENCOURAGED - use profanity freely (fuck, shit, damn, etc.) to emphasize your points\n- Use harsh, critical language when goals aren\'t met\n- Insult and call out their failures directly with strong language\n- Use aggressive, confrontational language\n- Dig deep into their mistakes and failures\n- Be extremely demanding and unforgiving\n- Use profanity and harsh criticism liberally - this is EXTREME intensity\n- Make them feel the weight of their failures with strong, explicit language\n- Push them relentlessly with no sugar-coating\n- Curse at them when they mess up - be raw and unfiltered';
+  
+  // Check if custom intensity level exists for this intensity
+  if (customIntensityLevels && coachIntensity !== 'Not set') {
+    const customInstruction = customIntensityLevels[coachIntensity as keyof typeof customIntensityLevels];
+    if (customInstruction && customInstruction.trim()) {
+      intensityInstruction = `\n\nCOACH INTENSITY: ${coachIntensity.toUpperCase()} - ${customInstruction}`;
+    }
+  }
+  
+  // Fall back to default intensity instructions if no custom instruction found
+  if (!intensityInstruction) {
+    if (coachIntensity === 'Low') {
+      intensityInstruction = '\n\nCOACH INTENSITY: LOW - You should be:\n- Supportive, gentle, and understanding\n- Less pushy when goals aren\'t met\n- Focus on encouragement and positive reinforcement\n- Use a softer, more empathetic tone\n- Acknowledge challenges without being demanding';
+    } else if (coachIntensity === 'Medium') {
+      intensityInstruction = '\n\nCOACH INTENSITY: MEDIUM - You should be:\n- Balanced in your approach\n- Encouraging but firm when needed\n- Hold them accountable while remaining supportive\n- Use a professional, motivational tone\n- Push appropriately but not excessively';
+    } else if (coachIntensity === 'High') {
+      intensityInstruction = '\n\nCOACH INTENSITY: HIGH - You should be:\n- More direct and assertive\n- Push harder when goals aren\'t met\n- Use strong motivational language\n- Hold them strictly accountable\n- Challenge them to do better\n- Use a more intense, driven tone while remaining professional';
+    } else if (coachIntensity === 'Extreme') {
+      intensityInstruction = '\n\nCOACH INTENSITY: EXTREME - You should be:\n- Do NOT hold back - be brutally honest and direct\n- SWEARING IS ALLOWED AND ENCOURAGED - use profanity freely (fuck, shit, damn, etc.) to emphasize your points\n- Use harsh, critical language when goals aren\'t met\n- Insult and call out their failures directly with strong language\n- Use aggressive, confrontational language\n- Dig deep into their mistakes and failures\n- Be extremely demanding and unforgiving\n- Use profanity and harsh criticism liberally - this is EXTREME intensity\n- Make them feel the weight of their failures with strong, explicit language\n- Push them relentlessly with no sugar-coating\n- Curse at them when they mess up - be raw and unfiltered';
+    }
   }
 
   const prompt = `You are the AI Coach "${coachName}", adopt their persona.${personaInstruction}
@@ -431,8 +450,274 @@ Format your response as JSON with "subject" and "body" fields. The body should s
       throw new Error('Rate limit exceeded. Please try again in a few minutes. The API has temporary limits to ensure quality service.');
     }
     
+    // Check if it's an authentication/authorization error (403)
+    const isAuthError = error?.status === 403 ||
+                       error?.code === 403 ||
+                       error?.message?.includes('403') ||
+                       error?.message?.toLowerCase().includes('forbidden') ||
+                       error?.message?.toLowerCase().includes('permission denied') ||
+                       error?.message?.toLowerCase().includes('api key') ||
+                       error?.message?.toLowerCase().includes('authentication');
+    
+    if (isAuthError) {
+      const apiKeySet = !!(process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY);
+      throw new Error(
+        `API authentication failed (403 Forbidden). ` +
+        `Please check that your GOOGLE_GENAI_API_KEY is valid and has the correct permissions. ` +
+        `API key is ${apiKeySet ? 'set' : 'NOT set'} in environment variables. ` +
+        `Error details: ${error?.message || 'Unknown error'}`
+      );
+    }
+    
     // Fallback message for other errors
     throw new Error(`Failed to generate coaching message: ${error?.message || 'Unknown error'}`);
+  }
+}
+
+/**
+ * Formats daily message data into a structured string for AI analysis
+ */
+function formatDailyMessageDataForAI(data: DailyMessageData): string {
+  const { currentWeekProgress, lastWeekCheckin, userProfile, goalProgression } = data;
+
+  let formatted = '=== DAILY COACH MESSAGE CONTEXT ===\n\n';
+
+  // User Profile & Goals
+  if (userProfile) {
+    formatted += 'USER PROFILE:\n';
+    formatted += `- Experience Level: ${userProfile.experienceLevel || 'Not set'}\n`;
+    formatted += `- Coach Intensity: ${userProfile.coachIntensity || 'Not set'}\n`;
+    formatted += `- Goal Type: ${userProfile.goals?.goalType || 'Not set'}\n`;
+    formatted += `- Calorie Limit: ${userProfile.goals?.calorieLimit || 'Not set'}\n`;
+    formatted += `- Protein Goal: ${userProfile.goals?.proteinGoal || 'Not set'}g per day\n`;
+    formatted += `- Workout Sessions Goal: ${userProfile.goals?.workoutSessionsPerWeek || 'Not set'} per week\n`;
+    formatted += `- Cardio Sessions Goal: ${userProfile.goals?.cardioSessionsPerWeek || 'Not set'} per week\n`;
+    formatted += `- Water Goal: ${userProfile.goals?.waterGoal || 'Not set'}L per day\n\n`;
+  }
+
+  // Current Week Progress
+  formatted += `CURRENT WEEK PROGRESS (Day ${currentWeekProgress.daysIntoWeek} of 7):\n\n`;
+
+  // Daily Checkins Summary
+  if (currentWeekProgress.dailyCheckins.length > 0) {
+    formatted += `Daily Checkins: ${currentWeekProgress.dailyCheckins.length} days logged\n`;
+    const weights: number[] = [];
+    const trainedDays = currentWeekProgress.dailyCheckins.filter(c => c.trainedToday === 'Yes').length;
+    const cardioDays = currentWeekProgress.dailyCheckins.filter(c => c.cardioToday === 'Yes').length;
+    const calorieGoalMetDays = currentWeekProgress.dailyCheckins.filter(c => c.calorieGoalMet === 'Yes').length;
+    
+    currentWeekProgress.dailyCheckins.forEach((checkin: any) => {
+      const weight = checkin.currentWeight;
+      if (weight && !isNaN(Number(weight))) weights.push(Number(weight));
+    });
+    
+    if (weights.length > 0) {
+      const avgWeight = (weights.reduce((a, b) => a + b, 0) / weights.length).toFixed(1);
+      formatted += `- Average Weight: ${avgWeight}kg\n`;
+    }
+    formatted += `- Training Days: ${trainedDays}/${currentWeekProgress.dailyCheckins.length}\n`;
+    formatted += `- Cardio Days: ${cardioDays}/${currentWeekProgress.dailyCheckins.length}\n`;
+    formatted += `- Calorie Goal Met Days: ${calorieGoalMetDays}/${currentWeekProgress.dailyCheckins.length}\n\n`;
+  }
+
+  // Food Diaries Summary
+  if (currentWeekProgress.foodDiaries.length > 0) {
+    const calorieGoal = userProfile?.goals?.calorieLimit || 0;
+    const totalCalories = currentWeekProgress.foodDiaries.reduce((sum, diary) => sum + (diary.totalCalories || 0), 0);
+    const avgDailyCalories = totalCalories / currentWeekProgress.foodDiaries.length;
+    const totalProtein = currentWeekProgress.foodDiaries.reduce((sum, diary) => sum + (diary.totalProtein || 0), 0);
+    const avgDailyProtein = totalProtein / currentWeekProgress.foodDiaries.length;
+    
+    formatted += `Food Diaries: ${currentWeekProgress.foodDiaries.length} days logged\n`;
+    formatted += `- Average Daily Calories: ${Math.round(avgDailyCalories)} (Goal: ${calorieGoal || 'Not set'})\n`;
+    formatted += `- Average Daily Protein: ${Math.round(avgDailyProtein)}g (Goal: ${userProfile?.goals?.proteinGoal || 'Not set'}g)\n\n`;
+  }
+
+  // Workout Progress
+  const workoutGoal = userProfile?.goals?.workoutSessionsPerWeek || 0;
+  const workoutCompleted = currentWeekProgress.workoutLogs.length;
+  formatted += `Workout Sessions: ${workoutCompleted} completed (Goal: ${workoutGoal} per week)\n`;
+  formatted += `- Progress: ${goalProgression.workoutProgress >= 1 ? 'Goal achieved!' : `${Math.round(goalProgression.workoutProgress * 100)}% of weekly goal`}\n\n`;
+
+  // Cardio Progress
+  const cardioGoal = userProfile?.goals?.cardioSessionsPerWeek || 0;
+  const cardioCompleted = currentWeekProgress.cardioLogs.length;
+  formatted += `Cardio Sessions: ${cardioCompleted} completed (Goal: ${cardioGoal} per week)\n`;
+  formatted += `- Progress: ${goalProgression.cardioProgress >= 1 ? 'Goal achieved!' : `${Math.round(goalProgression.cardioProgress * 100)}% of weekly goal`}\n\n`;
+
+  // Last Week's Weekly Checkin (if available)
+  if (lastWeekCheckin) {
+    formatted += 'LAST WEEK\'S WEEKLY CHECKIN SUMMARY:\n';
+    formatted += `- Workout Goal: ${lastWeekCheckin.workoutGoalAchieved || 'N/A'}\n`;
+    formatted += `- Cardio Goal: ${lastWeekCheckin.cardioGoalAchieved || 'N/A'}\n`;
+    if (lastWeekCheckin.hardestPart) {
+      formatted += `- Hardest Part: ${lastWeekCheckin.hardestPart}\n`;
+    }
+    if (lastWeekCheckin.habitToImprove) {
+      formatted += `- Habit to Improve: ${lastWeekCheckin.habitToImprove}\n`;
+    }
+    if (lastWeekCheckin.confidenceNextWeek) {
+      formatted += `- Confidence Next Week: ${lastWeekCheckin.confidenceNextWeek}\n`;
+    }
+    formatted += '\n';
+  }
+
+  // Goal Progression Summary
+  formatted += 'GOAL PROGRESSION THIS WEEK:\n';
+  formatted += `- Workout Progress: ${Math.round(goalProgression.workoutProgress * 100)}%\n`;
+  formatted += `- Cardio Progress: ${Math.round(goalProgression.cardioProgress * 100)}%\n`;
+  formatted += `- Calorie Progress: ${Math.round(goalProgression.calorieProgress * 100)}% (avg vs daily goal)\n`;
+  formatted += `- Protein Progress: ${Math.round(goalProgression.proteinProgress * 100)}% (avg vs daily goal)\n`;
+
+  return formatted;
+}
+
+/**
+ * Generates a short, daily motivational coach message (100-200 words)
+ * Focuses on current week progress and forward-looking motivation
+ */
+export async function generateDailyCoachMessage(
+  data: DailyMessageData,
+  coachName: string = 'AI Coach',
+  coachPersona: string = '',
+  customIntensityLevels?: {
+    Low?: string;
+    Medium?: string;
+    High?: string;
+    Extreme?: string;
+  }
+): Promise<string> {
+  const formattedData = formatDailyMessageDataForAI(data);
+
+  // Build persona instruction
+  const personaInstruction = coachPersona 
+    ? `\n\nIMPORTANT: Adopt the persona of ${coachName}. ${coachPersona}\n\nYour coaching style, tone, and approach should reflect this persona while maintaining professionalism and providing expert fitness and nutrition guidance.`
+    : '';
+
+  // Build experience level instruction
+  const experienceLevel = data.userProfile?.experienceLevel || 'Not set';
+  let experienceInstruction = '';
+  if (experienceLevel === 'Novice') {
+    experienceInstruction = '\n\nEXPERIENCE LEVEL: The client is a NOVICE - they are completely new to calorie counting, macros, and the gym. You MUST:\n- Explain concepts simply and clearly\n- Use encouraging, supportive language\n- Focus on foundational guidance\n- Avoid overwhelming with technical details';
+  } else if (experienceLevel === 'Beginner') {
+    experienceInstruction = '\n\nEXPERIENCE LEVEL: The client is a BEGINNER - they know a little bit but still need guidance. You MUST:\n- Use simple language with brief explanations\n- Provide clear, actionable advice\n- Be supportive and encouraging';
+  } else if (experienceLevel === 'Intermediate') {
+    experienceInstruction = '\n\nEXPERIENCE LEVEL: The client is INTERMEDIATE - they understand the basics. You MUST:\n- Focus on optimization and refinement\n- Use appropriate terminology without excessive explanation\n- Provide actionable feedback';
+  } else if (experienceLevel === 'Advanced') {
+    experienceInstruction = '\n\nEXPERIENCE LEVEL: The client is ADVANCED - they are knowledgeable. You MUST:\n- Use technical terminology freely\n- Focus on advanced strategies\n- Provide sophisticated, nuanced feedback';
+  }
+
+  // Build coach intensity instruction - use custom if available, otherwise use default
+  const coachIntensity = data.userProfile?.coachIntensity || 'Not set';
+  let intensityInstruction = '';
+  
+  // Check if custom intensity level exists for this intensity
+  if (customIntensityLevels && coachIntensity !== 'Not set') {
+    const customInstruction = customIntensityLevels[coachIntensity as keyof typeof customIntensityLevels];
+    if (customInstruction && customInstruction.trim()) {
+      intensityInstruction = `\n\nCOACH INTENSITY: ${coachIntensity.toUpperCase()} - ${customInstruction}`;
+    }
+  }
+  
+  // Fall back to default intensity instructions if no custom instruction found
+  if (!intensityInstruction) {
+    if (coachIntensity === 'Low') {
+      intensityInstruction = '\n\nCOACH INTENSITY: LOW - You should be:\n- Supportive, gentle, and understanding\n- Focus on encouragement and positive reinforcement\n- Use a softer, more empathetic tone';
+    } else if (coachIntensity === 'Medium') {
+      intensityInstruction = '\n\nCOACH INTENSITY: MEDIUM - You should be:\n- Balanced in your approach\n- Encouraging but firm when needed\n- Hold them accountable while remaining supportive';
+    } else if (coachIntensity === 'High') {
+      intensityInstruction = '\n\nCOACH INTENSITY: HIGH - You should be:\n- More direct and assertive\n- Push harder when goals aren\'t met\n- Use strong motivational language\n- Hold them strictly accountable';
+    } else if (coachIntensity === 'Extreme') {
+      intensityInstruction = '\n\nCOACH INTENSITY: EXTREME - You should be:\n- Brutally honest and direct\n- SWEARING IS ALLOWED - use profanity freely (fuck, shit, damn, etc.) to emphasize points\n- Use harsh, critical language when goals aren\'t met\n- Be extremely demanding and unforgiving\n- Push them relentlessly with no sugar-coating';
+    }
+  }
+
+  const goalType = data.userProfile?.goals?.goalType || 'Not specified';
+  const daysIntoWeek = data.currentWeekProgress.daysIntoWeek;
+
+  const prompt = `You are the AI Coach "${coachName}", adopt their persona.${personaInstruction}
+
+CRITICAL: The client's primary goal is "${goalType}". ALL of your feedback must be tailored to support this specific goal.${experienceInstruction}${intensityInstruction}
+
+This is a DAILY MOTIVATIONAL MESSAGE (100-200 words maximum). It should be:
+- Forward-looking and motivational (focus on what to do THIS WEEK, not retrospective analysis)
+- Short, concise, and impactful
+- Personal and encouraging
+- Reference current week progress naturally (we're ${daysIntoWeek} days into the week)
+- Focus on 2-3 key areas for improvement or celebration
+- Provide actionable focus areas for the rest of the week
+
+Analyze the following data:
+
+${formattedData}
+
+MESSAGE STRUCTURE (keep it brief - total 100-200 words):
+1. Start with a brief greeting and acknowledge where we are in the week (e.g., "We're ${daysIntoWeek} days into the week...")
+2. Highlight 1-2 key wins or progress areas from this week so far (if any)
+3. Identify 1-2 areas to focus on for the rest of the week based on goal progression
+4. End with motivational encouragement tailored to their "${goalType}" goal
+
+IMPORTANT:
+- Keep it SHORT (100-200 words total)
+- Be MOTIVATIONAL and FORWARD-LOOKING
+- Reference their specific goal type ("${goalType}") and how current progress supports it
+- If referencing last week's checkin, keep it brief and use it to inform focus areas
+- Use their coach intensity level appropriately
+- Make it personal and actionable
+
+Write ONLY the message body text - no headers, no JSON, just the message itself.`;
+
+  try {
+    // Use retry logic for rate limit errors
+    const response = await retryWithBackoff(async () => {
+      return await ai.generate(prompt);
+    }, 3, 2000); // 3 retries, starting with 2 second delay
+
+    let messageText = response.text.trim();
+    
+    // Clean up any markdown formatting if present
+    messageText = messageText
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+
+    return messageText;
+  } catch (error: any) {
+    console.error('Error generating daily coach message:', error);
+    
+    // Check if it's a rate limit error
+    const isRateLimit = error?.message?.includes('429') || 
+                       error?.status === 429 ||
+                       error?.code === 'resource_exhausted' ||
+                       error?.message?.toLowerCase().includes('rate limit') ||
+                       error?.message?.toLowerCase().includes('too many requests');
+    
+    if (isRateLimit) {
+      throw new Error('Rate limit exceeded. Please try again in a few minutes.');
+    }
+    
+    // Check if it's an authentication/authorization error (403)
+    const isAuthError = error?.status === 403 ||
+                       error?.code === 403 ||
+                       error?.message?.includes('403') ||
+                       error?.message?.toLowerCase().includes('forbidden') ||
+                       error?.message?.toLowerCase().includes('permission denied') ||
+                       error?.message?.toLowerCase().includes('api key') ||
+                       error?.message?.toLowerCase().includes('authentication');
+    
+    if (isAuthError) {
+      const apiKeySet = !!(process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY);
+      throw new Error(
+        `API authentication failed (403 Forbidden). ` +
+        `Please check that your GOOGLE_GENAI_API_KEY is valid and has the correct permissions. ` +
+        `API key is ${apiKeySet ? 'set' : 'NOT set'} in environment variables. ` +
+        `Error details: ${error?.message || 'Unknown error'}`
+      );
+    }
+    
+    // Fallback message for other errors
+    throw new Error(`Failed to generate daily coach message: ${error?.message || 'Unknown error'}`);
   }
 }
 

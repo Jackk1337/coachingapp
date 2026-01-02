@@ -16,10 +16,15 @@ if (typeof window === 'undefined') {
 
 // Configure Genkit with Google Gemini
 // Using gemini-3-flash-preview model
+const apiKey = process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY;
+if (!apiKey && typeof window === 'undefined') {
+  console.warn('Warning: GOOGLE_GENAI_API_KEY or GEMINI_API_KEY is not set. AI features will not work.');
+}
+
 export const ai = genkit({
   plugins: [
     googleAI({
-      apiKey: process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY,
+      apiKey: apiKey,
     }),
   ],
   model: googleAI.model('gemini-3-flash-preview'),

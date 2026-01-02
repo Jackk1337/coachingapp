@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { collectWeeklyData } from '@/lib/weeklyDataCollector';
-import { generateCoachingMessage } from '@/lib/genkitFlows';
+import { collectDailyMessageData } from '@/lib/dailyMessageDataCollector';
+import { generateDailyCoachMessage } from '@/lib/genkitFlows';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { verifyAuth } from '@/lib/api-auth';
-import { generateCoachingMessageSchema } from '@/lib/validation';
 import { ratelimit } from '@/lib/ratelimit';
 import { Logger } from '@/lib/logger';
-import { z } from 'zod';
+import { format } from 'date-fns';
 
 // Maximum request body size: 1MB
 const MAX_BODY_SIZE = 1024 * 1024;
@@ -19,48 +18,83 @@ function verifyOrigin(request: NextRequest): boolean {
   const referer = request.headers.get('referer');
   const host = request.headers.get('host');
   
-  // Allow requests from same origin (no Origin header) - this is a same-origin request
-  if (!origin) {
-    // Check referer as fallback
+  // In development, be very permissive
+  if (process.env.NODE_ENV === 'development') {
+    // Allow requests without origin (same-origin)
+    if (!origin) {
+      return true;
+    }
+    
+    // Allow any localhost origin
+    try {
+      const originUrl = new URL(origin);
+      const hostname = originUrl.hostname;
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return true;
+      }
+      // Also check if it matches the request host
+      if (host) {
+        const requestHostname = host.split(':')[0];
+        if (hostname === requestHostname) {
+          return true;
+        }
+      }
+    } catch {
+      // If parsing fails, allow in development
+      return true;
+    }
+    
+    // Fallback: allow if referer is localhost
     if (referer) {
       try {
         const refererUrl = new URL(referer);
-        const refererHostname = refererUrl.hostname;
-        // Allow localhost, 127.0.0.1, or if referer matches the request host
-        if (host && refererHostname === host.split(':')[0]) {
-          return true; // Same origin
+        if (refererUrl.hostname === 'localhost' || refererUrl.hostname === '127.0.0.1') {
+          return true;
         }
-        return refererHostname === 'localhost' || 
-               refererHostname === '127.0.0.1' || 
-               refererHostname.includes(process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || '');
       } catch {
-        // If we can't parse referer, be lenient in development
-        return process.env.NODE_ENV === 'development';
+        // Allow in development if we can't verify
+        return true;
       }
     }
-    // No origin and no referer - likely same-origin request, allow it
+    
+    // Default: allow in development
     return true;
   }
   
+  // Production: stricter checks
+  // Allow same-origin requests (no Origin header)
+  if (!origin) {
+    if (referer && host) {
+      try {
+        const refererUrl = new URL(referer);
+        const refererHost = refererUrl.host;
+        // Check if referer matches request host
+        if (refererHost === host || refererUrl.hostname === host.split(':')[0]) {
+          return true;
+        }
+      } catch {
+        // If we can't verify, deny in production
+        return false;
+      }
+    }
+    // No origin and no referer - deny in production
+    return false;
+  }
+  
+  // Check origin against allowed domains
   try {
     const originUrl = new URL(origin);
     const hostname = originUrl.hostname;
     
-    // Check if origin matches the request host (same origin)
+    // Check if origin matches request host (same-origin)
     if (host) {
-      const requestHostname = host.split(':')[0]; // Remove port if present
+      const requestHostname = host.split(':')[0];
       if (hostname === requestHostname) {
-        return true; // Same origin
+        return true;
       }
     }
     
-    // In development, allow localhost
-    if (process.env.NODE_ENV === 'development') {
-      return hostname === 'localhost' || hostname === '127.0.0.1';
-    }
-    
-    // In production, verify against expected domains
-    // Allow requests from Firebase Auth domain or your app domain
+    // Check against allowed domains
     const allowedDomains = [
       process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
       process.env.VERCEL_URL ? `${process.env.VERCEL_URL}` : undefined,
@@ -68,8 +102,8 @@ function verifyOrigin(request: NextRequest): boolean {
     
     return allowedDomains.some(domain => hostname.includes(domain || ''));
   } catch {
-    // If we can't parse origin, be lenient in development
-    return process.env.NODE_ENV === 'development';
+    // If we can't parse, deny in production
+    return false;
   }
 }
 
@@ -90,30 +124,12 @@ export async function POST(request: NextRequest) {
 
     // Verify CSRF protection
     if (!verifyOrigin(request)) {
-      const origin = request.headers.get('origin');
-      const referer = request.headers.get('referer');
-      const host = request.headers.get('host');
       logger.security('CSRF validation failed', {
-        origin,
-        referer,
-        host,
-        nodeEnv: process.env.NODE_ENV,
+        origin: request.headers.get('origin'),
+        referer: request.headers.get('referer'),
       });
       return NextResponse.json(
-        { 
-          error: 'Forbidden', 
-          message: 'CSRF validation failed. This may be a configuration issue.',
-          details: process.env.NODE_ENV === 'development' ? {
-            origin,
-            referer,
-            host,
-            expectedDomains: [
-              process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-              process.env.VERCEL_URL,
-            ].filter(Boolean),
-          } : undefined,
-          requestId 
-        },
+        { error: 'Forbidden', requestId },
         { status: 403 }
       );
     }
@@ -165,67 +181,69 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Parse and validate request body
-    let body: unknown;
+    // Parse optional request body for date (defaults to today)
+    let targetDate: string | undefined;
     try {
-      body = await request.json();
-    } catch (error) {
-      logger.error('Failed to parse request body', error);
-      return NextResponse.json(
-        { error: 'Invalid JSON in request body', requestId },
-        { status: 400 }
-      );
-    }
-
-    let validatedData: z.infer<typeof generateCoachingMessageSchema>;
-    try {
-      validatedData = generateCoachingMessageSchema.parse(body);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        logger.warn('Validation failed', { errors: error.issues });
-        return NextResponse.json(
-          {
-            error: 'Validation failed',
-            details: error.issues,
-            requestId,
-          },
-          { status: 400 }
-        );
+      const body = await request.json().catch(() => ({}));
+      if (body && typeof body.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
+        targetDate = body.date;
       }
-      throw error;
+    } catch (error) {
+      // No body or invalid JSON - that's fine, we'll use today
     }
 
-    const { weekStartDate } = validatedData;
+    // Use provided date or today
+    const date = targetDate || format(new Date(), 'yyyy-MM-dd');
+    const docId = `${userId}_${date}`;
 
-    // Collect all weekly data (now using verified userId)
-    logger.info('Collecting weekly data', { userId, weekStartDate });
-    const weeklyData = await collectWeeklyData(userId, weekStartDate);
+    // Check if message already exists for today
+    const adminDb = getAdminDb();
+    const existingMessageRef = adminDb.collection('daily_coach_messages').doc(docId);
+    const existingMessageSnap = await existingMessageRef.get();
 
-    // Check if weekly checkin exists
-    if (!weeklyData.weeklyCheckin) {
-      logger.warn('Weekly checkin not found', { userId, weekStartDate });
+    if (existingMessageSnap.exists) {
+      logger.info('Daily message already exists', { userId, date });
+      const existingData = existingMessageSnap.data();
+      return NextResponse.json({
+        success: true,
+        message: existingData?.message || '',
+        date,
+        coachName: existingData?.coachName || 'AI Coach',
+        requestId,
+      }, {
+        headers: {
+          'X-Request-ID': requestId,
+        },
+      });
+    }
+
+    // Collect daily message data
+    logger.info('Collecting daily message data', { userId, date });
+    const dailyData = await collectDailyMessageData(userId, date);
+
+    if (!dailyData.userProfile) {
+      logger.warn('User profile not found', { userId });
       return NextResponse.json(
-        { error: 'Weekly checkin not found for the specified week', requestId },
+        { error: 'User profile not found', requestId },
         { status: 404 }
       );
     }
 
     // Check if user has selected a coach
     // User has a coach if coachId exists and is not empty, and skipCoachReason is not set
-    const coachId = weeklyData.userProfile?.coachId;
-    const skipCoachReason = (weeklyData.userProfile as any)?.skipCoachReason;
+    const coachId = dailyData.userProfile?.coachId;
+    const skipCoachReason = (dailyData.userProfile as any)?.skipCoachReason;
     const hasCoach = coachId && coachId.trim() !== '' && !skipCoachReason;
 
     if (!hasCoach) {
       logger.info('User has not selected a coach, skipping message generation', { userId });
       return NextResponse.json(
-        { error: 'No coach selected', message: 'Please select an AI coach to receive coaching messages', requestId },
+        { error: 'No coach selected', message: 'Please select an AI coach to receive daily messages', requestId },
         { status: 400 }
       );
     }
 
-    // Fetch coach name, persona, and custom intensity levels from coaches collection BEFORE generating message
-    const adminDb = getAdminDb();
+    // Fetch coach name, persona, and custom intensity levels from coaches collection
     let coachName = 'AI Coach';
     let coachPersona = '';
     let customIntensityLevels: { Low?: string; Medium?: string; High?: string; Extreme?: string } | undefined;
@@ -264,29 +282,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Verify API key is set before attempting to generate message
-    const apiKey = process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      logger.error('GOOGLE_GENAI_API_KEY not configured', { userId });
-      return NextResponse.json(
-        {
-          error: 'Configuration error',
-          message: 'AI service is not properly configured. Please contact support.',
-          requestId,
-        },
-        { status: 500 }
-      );
-    }
-
-    // Generate coaching message using AI (pass coachName, coachPersona, and customIntensityLevels)
-    let subject: string;
-    let messageBody: string;
+    // Generate daily coaching message using AI
+    let message: string;
     
     try {
-      logger.info('Generating coaching message', { userId, coachId, coachName });
-      const result = await generateCoachingMessage(weeklyData, coachName, coachPersona, customIntensityLevels);
-      subject = result.subject;
-      messageBody = result.body;
+      logger.info('Generating daily coach message', { userId, coachId, coachName, date });
+      message = await generateDailyCoachMessage(dailyData, coachName, coachPersona, customIntensityLevels);
     } catch (error: unknown) {
       // Check if it's a rate limit error
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -308,51 +309,32 @@ export async function POST(request: NextRequest) {
         );
       }
       
-      // Check if it's an authentication error (403 from Google API)
-      const isAuthError = errorMessage.toLowerCase().includes('403') ||
-                         errorMessage.toLowerCase().includes('forbidden') ||
-                         errorMessage.toLowerCase().includes('api key') ||
-                         errorMessage.toLowerCase().includes('authentication') ||
-                         errorStatus === 403;
-      
-      if (isAuthError) {
-        logger.error('AI service authentication error', { userId, error: errorMessage });
-        return NextResponse.json(
-          {
-            error: 'AI service authentication failed',
-            message: 'The AI service authentication failed. Please check that GOOGLE_GENAI_API_KEY is valid and has the correct permissions.',
-            details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
-            requestId,
-          },
-          { status: 403 }
-        );
-      }
-      
       // Re-throw other errors to be handled by outer catch
       throw error;
     }
 
     // Save message to Firestore
-    logger.info('Saving message to Firestore', { userId });
-    const messageRef = await adminDb.collection('messages').add({
+    logger.info('Saving daily message to Firestore', { userId, date });
+    await existingMessageRef.set({
       userId,
-      subject,
-      body: messageBody,
-      coach_id: coachId,
-      coach_name: coachName,
-      read: false,
+      message,
+      date,
+      coachId,
+      coachName,
       createdAt: new Date(),
     });
 
-    logger.info('Coaching message generated successfully', {
+    logger.info('Daily coach message generated successfully', {
       userId,
-      messageId: messageRef.id,
+      date,
+      messageId: docId,
     });
 
     return NextResponse.json({
       success: true,
-      messageId: messageRef.id,
-      subject,
+      message,
+      date,
+      coachName,
       requestId,
     }, {
       headers: {
@@ -360,7 +342,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    logger.error('Error generating coaching message', error);
+    logger.error('Error generating daily coach message', error);
     
     const isDev = process.env.NODE_ENV === 'development';
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -375,7 +357,7 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json(
       {
-        error: 'Failed to generate coaching message',
+        error: 'Failed to generate daily coach message',
         ...(isDev && { details: errorMessage }),
         requestId,
       },
@@ -388,3 +370,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+

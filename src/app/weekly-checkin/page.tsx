@@ -209,12 +209,6 @@ export default function WeeklyCheckinPage() {
     e.preventDefault();
     if (!user) return;
     
-    // Prevent submission if not all daily checkins are completed
-    if (missingDays.length > 0) {
-      toast.error("Please complete Daily Checkins for all days of the week before submitting.");
-      return;
-    }
-    
     setLoading(true);
 
     try {
@@ -276,7 +270,9 @@ export default function WeeklyCheckinPage() {
         } else {
           const error = await response.json();
           console.error('Error generating coaching message:', error);
-          toast.error("Weekly checkin saved, but failed to generate coaching message.");
+          // Show more detailed error message to user
+          const errorMessage = error.message || error.error || "Failed to generate coaching message";
+          toast.error(`Weekly checkin saved, but failed to generate coaching message: ${errorMessage}`);
         }
       } catch (error) {
         console.error('Error calling coaching message API:', error);
@@ -340,7 +336,7 @@ export default function WeeklyCheckinPage() {
                 <TriangleAlertIcon className="h-5 w-5 text-yellow-600 dark:text-yellow-500 mt-0.5 flex-shrink-0" />
                 <div className="flex-1 space-y-2">
                   <p className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
-                    Please complete Daily Checkins for all days of the week before submitting your Weekly Checkin.
+                    Some Daily Checkins are missing for this week. You can still submit your Weekly Checkin, but completing all Daily Checkins will provide more accurate data.
                   </p>
                   <p className="text-sm text-yellow-800 dark:text-yellow-200">
                     Missing: {missingDays.map((day, index) => (
@@ -557,14 +553,12 @@ export default function WeeklyCheckinPage() {
               <Button 
                 type="submit" 
                 className="w-full" 
-                disabled={loading || generatingMessage || missingDays.length > 0}
+                disabled={loading || generatingMessage}
               >
                 {generatingMessage
                   ? "Generating Coaching Message..."
                   : loading 
                   ? "Saving..." 
-                  : missingDays.length > 0
-                  ? "Complete All Daily Checkins First"
                   : hasExistingCheckin 
                   ? "Update Weekly Checkin" 
                   : "Save Weekly Checkin"}

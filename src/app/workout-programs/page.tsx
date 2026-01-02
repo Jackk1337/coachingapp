@@ -97,7 +97,7 @@ export default function WorkoutProgramsPage() {
           <Link href="/community/workout-programs" className="flex-1">
             <Button variant="outline" className="w-full flex items-center gap-2">
               <Users className="h-4 w-4" />
-              Browse Community Programs
+              Community Programs
             </Button>
           </Link>
         </div>

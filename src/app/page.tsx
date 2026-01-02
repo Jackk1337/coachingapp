@@ -9,7 +9,10 @@ import { format, startOfWeek, endOfWeek, eachDayOfInterval } from "date-fns";
 import { onSnapshot } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dumbbell, Utensils, Activity, CalendarCheck, TrendingUp, CreditCard, ChevronDown, ChevronUp, Droplet, Pill } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Dumbbell, Utensils, Activity, CalendarCheck, TrendingUp, CreditCard, ChevronDown, ChevronUp, Droplet, Pill, MessageSquare } from "lucide-react";
 
 interface WeeklyStats {
   avgCaloriesPerDay: number;
@@ -28,12 +31,18 @@ interface WeeklyStats {
 }
 
 export default function Home() {
-  const { user, profile } = useAuth();
+  const { user, profile, updateProfile } = useAuth();
   const [weeklyStats, setWeeklyStats] = useState<WeeklyStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [macroOverviewExpanded, setMacroOverviewExpanded] = useState(false);
+  const [dailyMessageExpanded, setDailyMessageExpanded] = useState(false);
   const [todayCalories, setTodayCalories] = useState<{ consumed: number; remaining: number } | null>(null);
   const [todayWater, setTodayWater] = useState<{ consumedML: number; goalL: number } | null>(null);
+  const [dailyCoachMessage, setDailyCoachMessage] = useState<{ message: string; coachName: string } | null>(null);
+  const [loadingDailyMessage, setLoadingDailyMessage] = useState(false);
+  const [dailyMessageError, setDailyMessageError] = useState<string | null>(null);
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+  const [dontShowAgain, setDontShowAgain] = useState(false);
 
   const menuItems = [
     { name: "Workout Log", href: "/workout-log", icon: Dumbbell },
@@ -217,12 +226,179 @@ export default function Home() {
     };
   }, [user, profile]);
 
+  // Fetch today's daily coach message (only if user has selected a coach)
+  useEffect(() => {
+    if (!user) {
+      setDailyCoachMessage(null);
+      return;
+    }
+
+    // Check if user has selected a coach
+    // User has a coach if coachId exists and is not empty, and skipCoachReason is not set
+    const hasCoach = profile?.coachId && 
+                     profile.coachId.trim() !== '' && 
+                     !(profile as any)?.skipCoachReason;
+
+    if (!hasCoach) {
+      setDailyCoachMessage(null);
+      setLoadingDailyMessage(false);
+      setDailyMessageError(null);
+      return;
+    }
+
+    const fetchDailyMessage = async () => {
+      try {
+        setLoadingDailyMessage(true);
+        setDailyMessageError(null);
+        
+        const today = format(new Date(), "yyyy-MM-dd");
+        const messageDocId = `${user.uid}_${today}`;
+        const messageRef = doc(db, "daily_coach_messages", messageDocId);
+        const messageSnap = await getDoc(messageRef);
+
+        if (messageSnap.exists()) {
+          const data = messageSnap.data();
+          setDailyCoachMessage({
+            message: data.message || '',
+            coachName: data.coachName || 'AI Coach',
+          });
+        } else {
+          // Message doesn't exist, generate it via API
+          try {
+            const token = await user.getIdToken();
+            const response = await fetch('/api/generate-daily-coach-message', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+              },
+              body: JSON.stringify({ date: today }),
+            });
+
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              throw new Error(errorData.error || 'Failed to generate daily message');
+            }
+
+            const result = await response.json();
+            setDailyCoachMessage({
+              message: result.message || '',
+              coachName: result.coachName || 'AI Coach',
+            });
+          } catch (error) {
+            console.error('Error generating daily message:', error);
+            setDailyMessageError(error instanceof Error ? error.message : 'Failed to load daily message');
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching daily message:', error);
+        setDailyMessageError('Failed to load daily message');
+      } finally {
+        setLoadingDailyMessage(false);
+      }
+    };
+
+    fetchDailyMessage();
+  }, [user, profile]);
+
+  // Show welcome modal when user completes onboarding
+  useEffect(() => {
+    // Only show if user is logged in, profile is loaded, onboarding is completed, and user hasn't dismissed it
+    if (user && profile && profile.onboardingCompleted && !(profile as any).welcomeModalDismissed) {
+      console.log('Showing welcome modal - onboarding completed:', profile.onboardingCompleted);
+      setShowWelcomeModal(true);
+    } else {
+      console.log('Welcome modal conditions:', { 
+        user: !!user, 
+        profile: !!profile, 
+        onboardingCompleted: profile?.onboardingCompleted,
+        welcomeModalDismissed: (profile as any)?.welcomeModalDismissed 
+      });
+    }
+  }, [user, profile]);
+
   return (
-    <div className="min-h-screen bg-background p-4 pb-8 flex flex-col items-center">
-      <header className="w-full max-w-md mb-6 mt-4 text-center">
-        <h1 className="text-3xl font-bold tracking-tight">RallyFit</h1>
-        <p className="text-muted-foreground mt-2">Track your fitness journey</p>
-      </header>
+    <>
+      {/* Welcome Modal */}
+      <Dialog open={showWelcomeModal} onOpenChange={setShowWelcomeModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-2xl">Welcome to RallyFit! 🎉</DialogTitle>
+            <DialogDescription className="text-base pt-2">
+              Your personalized fitness companion is ready to help you reach your goals.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <h3 className="font-semibold mb-2">Quick Start Guide:</h3>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li className="flex items-start gap-2">
+                  <Dumbbell className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                  <span><strong className="text-foreground">Log Workouts</strong> - Track your training sessions and see your weekly progress</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Utensils className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                  <span><strong className="text-foreground">Record Meals</strong> - Monitor your nutrition and stay within your macro goals</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Droplet className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                  <span><strong className="text-foreground">Track Water</strong> - Set and achieve your daily hydration goals</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CalendarCheck className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                  <span><strong className="text-foreground">Complete Daily Check-ins</strong> - Track your daily progress and habits</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <TrendingUp className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                  <span><strong className="text-foreground">Weekly Check-in</strong> - Complete your weekly check-in on Sunday to generate your coaching feedback (no feedback sent if you don't have a coach)</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <MessageSquare className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                  <span><strong className="text-foreground">Browse Community</strong> - Explore community workouts and coaches</span>
+                </li>
+              </ul>
+            </div>
+            <div className="pt-2 border-t">
+              <p className="text-sm text-muted-foreground">
+                Your AI Coach will analyze your progress and provide personalized feedback to help you reach your goals. 
+                The more you log, the better insights you'll receive!
+              </p>
+            </div>
+            <div className="flex items-center space-x-2 pt-2">
+              <Checkbox
+                id="dont-show-again"
+                checked={dontShowAgain}
+                onCheckedChange={(checked) => setDontShowAgain(checked === true)}
+              />
+              <Label htmlFor="dont-show-again" className="text-sm cursor-pointer">
+                Do not show this again
+              </Label>
+            </div>
+            <div className="flex justify-end pt-2">
+              <Button 
+                onClick={async () => {
+                  if (dontShowAgain && user) {
+                    try {
+                      await updateProfile({ welcomeModalDismissed: true });
+                    } catch (error) {
+                      console.error('Error saving welcome modal preference:', error);
+                    }
+                  }
+                  setShowWelcomeModal(false);
+                }}
+              >
+                Get Started
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <div className="min-h-screen bg-background p-4 pb-8 flex flex-col items-center">
+        <header className="w-full max-w-md mb-6 mt-4 text-center">
+          <h1 className="text-3xl font-bold tracking-tight">RallyFit</h1>
+          <p className="text-muted-foreground mt-2">Track your fitness journey</p>
+        </header>
 
       {/* Weekly Overview Section */}
       {user && !loading && weeklyStats && (
@@ -352,6 +528,64 @@ export default function Home() {
             )}
           </div>
 
+          {/* Daily Coach Message - Collapsible Card (only show if user has selected a coach) */}
+          {(() => {
+            // Check if user has selected a coach
+            const hasCoach = profile?.coachId && 
+                             profile.coachId.trim() !== '' && 
+                             !(profile as any)?.skipCoachReason;
+            
+            // Only show card if user has a coach AND (has message or is loading)
+            if (!hasCoach || (!dailyCoachMessage && !loadingDailyMessage)) {
+              return null;
+            }
+            
+            return (
+              <Card>
+                <CardHeader 
+                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => setDailyMessageExpanded(!dailyMessageExpanded)}
+                >
+                  <CardTitle className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="h-5 w-5" />
+                      <span>Message from your coach</span>
+                      {dailyCoachMessage && (
+                        <span className="text-sm font-normal text-muted-foreground">
+                          ({dailyCoachMessage.coachName})
+                        </span>
+                      )}
+                    </div>
+                    {dailyMessageExpanded ? (
+                      <ChevronUp className="h-5 w-5" />
+                    ) : (
+                      <ChevronDown className="h-5 w-5" />
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                {dailyMessageExpanded && (
+                  <CardContent>
+                    {loadingDailyMessage ? (
+                      <div className="text-center py-4 text-muted-foreground">
+                        Generating your daily message...
+                      </div>
+                    ) : dailyMessageError ? (
+                      <div className="text-center py-4 text-sm text-destructive">
+                        {dailyMessageError}
+                      </div>
+                    ) : dailyCoachMessage ? (
+                      <div className="prose prose-sm max-w-none">
+                        <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                          {dailyCoachMessage.message}
+                        </p>
+                      </div>
+                    ) : null}
+                  </CardContent>
+                )}
+              </Card>
+            );
+          })()}
+
           {/* Weekly Macro Overview - Collapsible Card */}
           <Card>
             <CardHeader 
@@ -477,6 +711,7 @@ export default function Home() {
           </Link>
         ))}
       </main>
-    </div>
+      </div>
+    </>
   );
 }

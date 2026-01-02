@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dumbbell, Utensils, Trophy, ChevronLeft } from "lucide-react";
+import { Dumbbell, Trophy, ChevronLeft, Sparkles } from "lucide-react";
 
 export default function CommunityPage() {
   return (
@@ -42,18 +42,18 @@ export default function CommunityPage() {
             </Card>
           </Link>
 
-          {/* Community Meals Card */}
-          <Link href="/community/meals">
+          {/* User Created AI Coaches Card */}
+          <Link href="/community/coaches">
             <Card className="hover:border-primary transition-colors cursor-pointer">
               <CardHeader>
                 <div className="flex items-center gap-4">
                   <div className="p-3 rounded-lg bg-primary/10">
-                    <Utensils className="h-8 w-8 text-primary" />
+                    <Sparkles className="h-8 w-8 text-primary" />
                   </div>
                   <div className="flex-1">
-                    <CardTitle className="text-xl">Community Meals</CardTitle>
+                    <CardTitle className="text-xl">User Created AI Coaches</CardTitle>
                     <CardDescription className="mt-1">
-                      Browse and copy meals created by the community
+                      Browse and copy custom AI coaches created by the community
                     </CardDescription>
                   </div>
                 </div>

@@ -21,8 +21,11 @@ interface UserProfile {
   lastName?: string;
   handle?: string; // Twitter-like @username
   dateOfBirth?: string; // ISO date string
+  country?: string;
+  timezone?: string;
   gender?: "Male" | "Female";
   onboardingCompleted?: boolean;
+  welcomeModalDismissed?: boolean;
   height?: number; // cm
   weight?: number; // kg
   bodyFatPercentage?: number; // optional, for TDEE

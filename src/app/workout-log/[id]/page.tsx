@@ -571,7 +571,7 @@ export default function WorkoutSessionPage({ params }: { params: Promise<{ id: s
 
     const exercisesQuery = query(
       collection(db, "exercise_library"),
-      where("userId", "==", user.uid),
+      where("userId", "in", [user.uid, "rallyfit"]),
       orderBy("name")
     );
 

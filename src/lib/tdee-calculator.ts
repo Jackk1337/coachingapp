@@ -3,7 +3,7 @@
  */
 
 export type ActivityLevel = "Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active" | "Extremely Active";
-export type GoalType = "Lose Weight" | "Gain Weight" | "Gain Strength";
+export type GoalType = "Lose Weight" | "Gain Weight" | "Gain Strength" | "Maintain";
 export type Gender = "Male" | "Female";
 
 const ACTIVITY_MULTIPLIERS: Record<ActivityLevel, number> = {
@@ -84,6 +84,12 @@ export function calculateMacros(
       carbPercentage = 0.5; // 50% carbs (higher for strength)
       fatPercentage = 0.2; // 20% fat
       break;
+    case "Maintain":
+      targetCalories = tdee; // Maintain current weight
+      proteinPerKg = 2.0;
+      carbPercentage = 0.45; // 45% carbs
+      fatPercentage = 0.25; // 25% fat
+      break;
   }
 
   // Calculate protein in grams
@@ -111,6 +117,63 @@ export function calculateMacros(
 }
 
 /**
+ * Calculate macros from percentages
+ * @param targetCalories Target daily calories
+ * @param proteinPercentage Protein percentage (0-1, e.g., 0.30 for 30%)
+ * @param carbPercentage Carb percentage (0-1, e.g., 0.35 for 35%)
+ * @param fatPercentage Fat percentage (0-1, e.g., 0.35 for 35%)
+ * @returns Macro goals object
+ */
+export function calculateMacrosFromPercentages(
+  targetCalories: number,
+  proteinPercentage: number,
+  carbPercentage: number,
+  fatPercentage: number
+): MacroGoals {
+  // Validate percentages sum to 100%
+  const total = proteinPercentage + carbPercentage + fatPercentage;
+  if (Math.abs(total - 1.0) > 0.01) {
+    throw new Error(`Macro percentages must sum to 100%. Current sum: ${(total * 100).toFixed(1)}%`);
+  }
+
+  // Calculate calories for each macro
+  const proteinCalories = Math.round(targetCalories * proteinPercentage);
+  const carbCalories = Math.round(targetCalories * carbPercentage);
+  const fatCalories = Math.round(targetCalories * fatPercentage);
+
+  // Convert to grams
+  const proteinGrams = Math.round(proteinCalories / 4);
+  const carbGrams = Math.round(carbCalories / 4);
+  const fatGrams = Math.round(fatCalories / 9);
+
+  return {
+    calories: Math.round(targetCalories),
+    protein: proteinGrams,
+    carbs: carbGrams,
+    fat: fatGrams,
+  };
+}
+
+/**
+ * Calculate target calories based on TDEE and goal type
+ * @param tdee Total Daily Energy Expenditure
+ * @param goalType Goal type
+ * @returns Target calories
+ */
+export function calculateTargetCalories(tdee: number, goalType: GoalType): number {
+  switch (goalType) {
+    case "Lose Weight":
+      return tdee - 500; // 500 cal deficit
+    case "Gain Weight":
+      return tdee + 500; // 500 cal surplus
+    case "Gain Strength":
+      return tdee + 300; // 300 cal surplus
+    case "Maintain":
+      return tdee; // Maintain current weight
+  }
+}
+
+/**
  * Calculate complete TDEE and macros in one function
  * @param weight Weight in kg
  * @param height Height in cm
@@ -132,6 +195,7 @@ export function calculateCompleteMacros(
   const tdee = calculateTDEE(bmr, activityLevel);
   return calculateMacros(tdee, goalType, weight);
 }
+
 
 
 

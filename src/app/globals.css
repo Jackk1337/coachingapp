@@ -141,6 +141,27 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+    /* Disable text selection on mobile to prevent accidental highlighting */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    /* Prevent text selection highlighting */
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  /* Allow text selection for inputs, textareas, and content areas */
+  input,
+  textarea,
+  [contenteditable="true"],
+  [role="textbox"],
+  /* Allow selection in code blocks or other areas where copying might be needed */
+  pre,
+  code {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
   }
   
   /* Modern scrollbar styling */

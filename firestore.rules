@@ -39,6 +39,12 @@ service cloud.firestore {
       allow read: if isOwner(userId);
       allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
       allow update, delete: if isOwner(userId);
+      
+      // Subscriptions subcollection - users can read their own subscriptions
+      match /subscriptions/{subscriptionId} {
+        allow read: if isOwner(userId);
+        allow write: if false; // Only server-side (Stripe webhooks) should write subscriptions
+      }
     }
     
     // Profiles collection - users can read all profiles (for community features), write only their own

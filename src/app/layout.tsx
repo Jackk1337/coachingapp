@@ -3,9 +3,12 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import AuthGuard from "@/components/AuthGuard";
+import TrialGuard from "@/components/TrialGuard";
+import SubscriptionGuard from "@/components/SubscriptionGuard";
 import NavBar from "@/components/NavBar";
 import AddToHomeScreen from "@/components/AddToHomeScreen";
 import { Toaster } from "@/components/ui/sonner";
+import { Analytics } from "@vercel/analytics/react";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -55,11 +58,16 @@ export default function RootLayout({
       >
         <AuthProvider>
           <AuthGuard>
-            <NavBar />
-            {children}
+            <TrialGuard>
+              <SubscriptionGuard>
+                <NavBar />
+                {children}
+              </SubscriptionGuard>
+            </TrialGuard>
           </AuthGuard>
           <Toaster />
           <AddToHomeScreen />
+          <Analytics />
         </AuthProvider>
       </body>
     </html>

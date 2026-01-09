@@ -33,6 +33,7 @@ interface UserProfile {
   coachId?: string;
   experienceLevel?: "Novice" | "Beginner" | "Intermediate" | "Advanced";
   coachIntensity?: "Low" | "Medium" | "High" | "Extreme";
+  trialEnds?: any; // Firestore Timestamp
   goals?: {
     goalType: "Lose Weight" | "Gain Strength" | "Gain Weight";
     calorieLimit: number;
